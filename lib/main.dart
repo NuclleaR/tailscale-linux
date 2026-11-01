@@ -17,6 +17,8 @@ import 'tailscale/taildrop_receiver.dart';
 import 'tailscale/tailscale_controller.dart';
 import 'tray/tray_menu.dart';
 import 'tray/tray_presenter.dart';
+import 'update/update.dart';
+import 'update/update_controller.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -156,6 +158,10 @@ Future<void> main() async {
       tailscale: tailscale,
       appSettings: appSettings,
       autostart: autostart,
+      updates: UpdateController(
+        app: AppInstall.current(),
+        updater: const GitHubUpdater(),
+      ),
       screen: screen,
     ),
   );
@@ -171,6 +177,7 @@ class TailscaleApp extends StatelessWidget {
     required this.tailscale,
     required this.appSettings,
     required this.autostart,
+    required this.updates,
     required this.screen,
   });
 
@@ -178,6 +185,7 @@ class TailscaleApp extends StatelessWidget {
   final TailscaleController tailscale;
   final AppSettings appSettings;
   final Autostart autostart;
+  final UpdateController updates;
   final ValueNotifier<AppScreen> screen;
 
   @override
@@ -203,6 +211,7 @@ class TailscaleApp extends StatelessWidget {
                   tailscale: tailscale,
                   appSettings: appSettings,
                   autostart: autostart,
+                  updates: updates,
                   onBack: () => screen.value = AppScreen.main,
                 ),
               },

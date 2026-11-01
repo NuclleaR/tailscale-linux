@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../platform/autostart.dart';
 import '../tailscale/tailscale_controller.dart';
+import '../update/update_controller.dart';
 import 'about_page.dart';
 import 'accounts_page.dart';
 import 'app_settings.dart';
@@ -26,12 +27,14 @@ class SettingsWindow extends StatefulWidget {
     required this.tailscale,
     required this.appSettings,
     required this.autostart,
+    required this.updates,
     required this.onBack,
   });
 
   final TailscaleController tailscale;
   final AppSettings appSettings;
   final Autostart autostart;
+  final UpdateController updates;
 
   /// Goes back to the main window.
   final VoidCallback onBack;
@@ -88,7 +91,10 @@ class _SettingsWindowState extends State<SettingsWindow> {
                 appSettings: widget.appSettings,
                 autostart: widget.autostart,
               ),
-              SettingsTab.about => AboutPage(tailscale: widget.tailscale),
+              SettingsTab.about => AboutPage(
+                tailscale: widget.tailscale,
+                updates: widget.updates,
+              ),
             },
           ),
         ],

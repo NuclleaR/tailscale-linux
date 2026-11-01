@@ -1,35 +1,27 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../platform/desktop.dart';
 import '../tailscale/status.dart';
 import '../tailscale/tailscale_controller.dart';
+import '../update/update_controller.dart';
 
 const _privacyPolicyUrl = 'https://tailscale.com/privacy-policy';
 const _termsUrl = 'https://tailscale.com/terms';
 const _issuesUrl = 'https://github.com/NuclleaR/tailscale-linux/issues';
 
-/// The About pane: versions and links.
+/// The About pane: versions, links and updates.
 class AboutPage extends StatefulWidget {
-  const AboutPage({super.key, required this.tailscale});
+  const AboutPage({super.key, required this.tailscale, required this.updates});
 
   final TailscaleController tailscale;
+  final UpdateController updates;
 
   @override
   State<AboutPage> createState() => _AboutPageState();
 }
 
 class _AboutPageState extends State<AboutPage> {
-  late final Future<String> _appVersion = _readAppVersion();
   late final Future<ClientVersion> _update = widget.tailscale.checkForUpdate();
-
-  /// Flutter writes the pubspec version into the bundle's `version.json`.
-  static Future<String> _readAppVersion() async {
-    final json = jsonDecode(await rootBundle.loadString('version.json'));
-    return json is Map<String, Object?> ? json['version'] as String? ?? '' : '';
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -53,11 +45,10 @@ class _AboutPageState extends State<AboutPage> {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  FutureBuilder(
-                    future: _appVersion,
-                    builder: (context, snapshot) =>
-                        Text('Version ${snapshot.data ?? '…'}'),
-                  ),
+                  Text(switch (widget.updates.app.version) {
+                    '' => 'Version unknown',
+                    final v => 'Version $v',
+                  }),
                   ListenableBuilder(
                     listenable: widget.tailscale,
                     builder: (context, _) =>
@@ -92,7 +83,11 @@ class _AboutPageState extends State<AboutPage> {
               ),
             ],
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 24),
+          const Divider(),
+          const SizedBox(height: 12),
+          _Updates(widget.updates),
+          const SizedBox(height: 24),
           Text(
             'An unofficial client, not affiliated with Tailscale Inc.\n'
             'Tailscale is a trademark of Tailscale Inc.',
@@ -103,6 +98,90 @@ class _AboutPageState extends State<AboutPage> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Check for Updates, then Update, then Restart.
+class _Updates extends StatelessWidget {
+  const _Updates(this.updates);
+
+  final UpdateController updates;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ListenableBuilder(
+      listenable: updates,
+      builder: (context, _) {
+        final release = updates.release;
+        final (String message, Widget? action) = switch (updates.stage) {
+          UpdateStage.idle => ('', null),
+          UpdateStage.checking => ('Checking for updates…', null),
+          UpdateStage.upToDate => ('Tailscale for Linux is up to date.', null),
+          UpdateStage.available when !updates.app.installed => (
+            'Version ${release!.version} is available. Only a copy '
+                'installed with install.sh updates itself.',
+            null,
+          ),
+          UpdateStage.available => (
+            'Version ${release!.version} is available.',
+            FilledButton(
+              onPressed: updates.install,
+              child: const Text('Update'),
+            ),
+          ),
+          UpdateStage.installing => (
+            'Installing version ${release!.version}…',
+            null,
+          ),
+          UpdateStage.installed => (
+            'Version ${release!.version} is installed.',
+            FilledButton(
+              onPressed: updates.restart,
+              child: const Text('Restart'),
+            ),
+          ),
+          UpdateStage.failed => ('Update failed: ${updates.error}', null),
+        };
+        final canCheck = switch (updates.stage) {
+          UpdateStage.idle ||
+          UpdateStage.upToDate ||
+          UpdateStage.failed => true,
+          _ => false,
+        };
+        return Wrap(
+          alignment: WrapAlignment.center,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 12,
+          runSpacing: 8,
+          children: [
+            if (updates.busy)
+              const SizedBox.square(
+                dimension: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            if (message.isNotEmpty)
+              Text(
+                message,
+                style: updates.stage == UpdateStage.failed
+                    ? TextStyle(color: theme.colorScheme.error)
+                    : null,
+              ),
+            ?action,
+            if (release != null && updates.stage == UpdateStage.available)
+              TextButton(
+                onPressed: () => openUrl(release.pageUrl.toString()),
+                child: const Text('Release Notes'),
+              ),
+            if (canCheck)
+              OutlinedButton(
+                onPressed: updates.check,
+                child: const Text('Check for Updates'),
+              ),
+          ],
+        );
+      },
     );
   }
 }

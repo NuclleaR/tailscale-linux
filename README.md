@@ -58,37 +58,69 @@ This is an unofficial project and is not affiliated with Tailscale Inc.
   Without it the app can still show status, but connect, exit node and
   account switching are refused by `tailscaled`.
 
+## Install
+
+Install the newest release for your user:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/NuclleaR/tailscale-linux/main/install.sh | bash
+```
+
+It puts the app in `~/.local/share/tailscale-linux`, the `tailscale-linux`
+command in `~/.local/bin` and a **Tailscale** entry in the app menu. Remove it
+with:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/NuclleaR/tailscale-linux/main/install.sh | bash -s -- --uninstall
+```
+
+To update, open **Settings… → About → Check for Updates**: the app downloads
+the new release, replaces the installed copy (the old one stays if anything
+fails) and restarts. Only a copy installed with `install.sh` updates itself.
+
+The app starts in the tray with its window hidden. Open the window with
+**Open Tailscale** or **Settings…**. Closing the window only hides it; use
+**Quit** to exit.
+
+**Launch Tailscale at login** writes
+`~/.config/autostart/tailscale_linux.desktop` pointing at the binary that is
+running. If you move the app, turn the option off and on again. The app's own
+settings live in `~/.config/tailscale_linux/settings.json`.
+
 ## Building
 
 You need the Flutter SDK (stable, Dart 3.13 or newer) and the usual Flutter
 Linux toolchain: `clang`, `cmake`, `ninja`, `pkg-config` and the GTK 3, X11
-and Xi development files.
+and Xi development files. `mise install` sets up Flutter, CMake, Ninja and
+`just` from `mise.toml`.
 
 ```sh
-flutter pub get
-flutter run -d linux                # run in debug mode
-flutter build linux --release       # release build
+just run              # debug build, with hot reload
+just build            # release build in build/linux/x64/release/bundle/
+just install-local    # install that build the way install.sh does
 ```
 
-The release binary is
-`build/linux/x64/release/bundle/tailscale_linux`. Copy the whole `bundle/`
-directory if you move it: the binary needs `lib/` and `data/` next to it.
-
-The app starts in the tray with its window hidden. Open the window with
-**Settings…**. Closing the window only hides it; use **Quit** to exit.
-
-**Launch Tailscale at login** writes
-`~/.config/autostart/tailscale_linux.desktop` pointing at the binary that is
-running. If you move the bundle, turn the option off and on again. The app's
-own settings live in `~/.config/tailscale_linux/settings.json`.
+Copy the whole `bundle/` directory if you move a build: the binary needs
+`lib/` and `data/` next to it.
 
 ## Development
 
 ```sh
-flutter analyze
-flutter test
-dart format lib test
+just check    # dart format check, flutter analyze, flutter test
+just fmt      # format lib/ and test/
+just --list   # everything else
 ```
+
+## Releasing
+
+1. Set the new `version` in `pubspec.yaml` (no build number) and add a
+   `## [<version>] - <date>` section to `CHANGELOG.md`: it becomes the release
+   notes.
+2. Commit, then run `just release`. It tags `v<version>` and pushes the tag.
+3. The **Release** workflow checks the tag against `pubspec.yaml`, runs the
+   tests, builds `tailscale-linux-x64.tar.gz` and publishes the GitHub
+   release. A version with a suffix, such as `0.2.0-beta`, becomes a
+   pre-release.
 
 ### How it works
 
@@ -153,12 +185,19 @@ lib/
     about_page.dart          the About pane
     app_settings.dart        the app's own settings file
     widgets.dart             shared widgets and the error snack bar
+  update/
+    update.dart              GitHub releases, versions, installing an archive
+    update_controller.dart   Check for Updates in About
   platform/
     desktop.dart             XDG folders, opening URLs, notifications
     autostart.dart           the XDG autostart entry
     file_picker.dart         kdialog / zenity file dialog
 linux/runner/                GTK runner: window starts hidden, close hides it
 assets/tray/                 tray icons (SVG sources and rendered PNGs)
+assets/app_icon.*            the menu entry's icon
+install.sh                   installer for the newest GitHub release
+justfile                     dev commands (just --list)
+.github/workflows/release.yml  builds and publishes a release on a v* tag
 ```
 
 ## Known limitations

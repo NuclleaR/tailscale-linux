@@ -1,0 +1,66 @@
+# Builds and publishes a release when a version tag is pushed. The tag must be
+# v<version from pubspec.yaml>, and CHANGELOG.md must have a section for that version: it
+# becomes the release notes. Versions with a suffix (0.2.0-beta) become pre-releases.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check the tag matches pubspec.yaml
+        run: |
+          version="$(sed -n 's/^version: *//p' pubspec.yaml)"
+          if [[ "v$version" != "$GITHUB_REF_NAME" ]]; then
+            echo "Tag $GITHUB_REF_NAME does not match pubspec.yaml version $version" >&2
+            exit 1
+          fi
+
+      - name: Take the release notes from CHANGELOG.md
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '
+            index($0, "## [" v "]") == 1 { on = 1; next }
+            /^## \[/ && on { exit }
+            on
+          ' CHANGELOG.md > release-notes.md
+          if ! grep -q '[^[:space:]]' release-notes.md; then
+            echo "CHANGELOG.md has no section for $version" >&2
+            exit 1
+          fi
+
+      # GTK for the runner and the plugins; X11 and Xi for cnativeapi (tray, window).
+      - name: Install system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang pkg-config libgtk-3-dev libx11-dev libxi-dev \
+            liblzma-dev libstdc++-12-dev
+
+      # Flutter, CMake and Ninja from mise.toml, as on a developer machine.
+      - uses: jdx/mise-action@v5
+
+      - run: flutter pub get
+      - run: flutter test
+      - run: flutter build linux --release
+
+      - name: Package
+        run: |
+          tar -C build/linux/x64/release --transform 's,^bundle,tailscale-linux,' \
+            -czf tailscale-linux-x64.tar.gz bundle
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=()
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then prerelease=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" tailscale-linux-x64.tar.gz \
+            --title "Tailscale for Linux ${GITHUB_REF_NAME#v}" --notes-file release-notes.md "${prerelease[@]}"

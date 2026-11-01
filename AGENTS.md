@@ -24,6 +24,12 @@ Do not revisit these without the maintainer asking:
   `notify-send`, `kdialog`/`zenity` (file dialog), `pkexec`.
 - **One window, two screens**: the main window and the settings window share
   the single native window; `AppScreen` in `main.dart` picks which shows.
+- **Releases follow mp3directcutlinux** (the maintainer's other app): a `v*`
+  tag that matches `pubspec.yaml`'s `version` (no build number) and a
+  `CHANGELOG.md` section for it; `.github/workflows/release.yml` publishes
+  `tailscale-linux-x64.tar.gz`; `install.sh` installs the newest release into
+  `~/.local/share/tailscale-linux`; About's Check for Updates replaces only
+  that copy.
 
 ## Commands
 
@@ -35,8 +41,16 @@ flutter build linux --debug
 build/linux/x64/debug/bundle/tailscale_linux    # run the built app
 ```
 
-Before reporting a change as done, run `flutter analyze` and `flutter test`,
-and format the code with `dart format`.
+The `justfile` wraps these (`just --list`) for the maintainer. Before
+reporting a change as done, run `flutter analyze` and `flutter test`, and
+format the code with `dart format`.
+
+Never run `just release`, push a tag or install into `~/.local` unless the
+maintainer asks: a tag publishes a release. Test `install.sh` with
+`XDG_DATA_HOME`/`XDG_BIN_HOME` pointing at a temporary folder and
+`TAILSCALE_LINUX_ARCHIVE_URL=file://…`.
+
+A user-visible change gets a line in `CHANGELOG.md` under the next version.
 
 ## Architecture
 
@@ -57,6 +71,9 @@ and format the code with `dart format`.
   still carries stale peers.
 - `lib/tailscale/taildrop_receiver.dart`: saves received files to the XDG
   Downloads folder on `FilesWaiting` bus events and on start.
+- `lib/update/`: in-app updates. `update.dart` is copied from
+  mp3directcutlinux's `lib/core/update.dart` (names changed); keep the two
+  alike. `AppInstall` decides whether this copy is the installed one.
 - `lib/settings/`: the settings window. User actions go through
   `runAction` (`widgets.dart`), which shows a failure in a snack bar;
   destructive ones ask first with `confirm`.
