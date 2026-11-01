@@ -17,8 +17,16 @@ This is an unofficial project and is not affiliated with Tailscale Inc.
     Click to copy a device's IP.
   - **Exit Nodes**: pick an exit node or turn it off.
   - **Settings…** and **Quit**.
-- **Settings window** with the Accounts pane: tailnet, email, login status,
-  control server and key expiry for each account.
+- **Settings window** with three panes, as in the macOS app:
+  - **Accounts**: tailnet, email, login status and key expiry for each
+    account. Add an account (the login page opens in your browser), switch to
+    another, log out, renew the key, or remove an account from this computer.
+  - **Settings**: allow incoming connections, use Tailscale DNS (with a
+    dialog listing the tailnet's search domains and split DNS routes), use
+    Tailscale subnets, launch at login, the tray icon color, and whether
+    Tailnet Lock is enabled.
+  - **About**: app and `tailscaled` versions, a notice when a newer
+    `tailscaled` exists, and links.
 - **Live updates**: the app subscribes to `tailscaled` notifications instead of
   polling.
 - **Access check** on start. Without operator rights, the app shows the
@@ -58,6 +66,11 @@ directory if you move it: the binary needs `lib/` and `data/` next to it.
 The app starts in the tray with its window hidden. Open the window with
 **Settings…**. Closing the window only hides it; use **Quit** to exit.
 
+**Launch Tailscale at login** writes
+`~/.config/autostart/tailscale_linux.desktop` pointing at the binary that is
+running. If you move the bundle, turn the option off and on again. The app's
+own settings live in `~/.config/tailscale_linux/settings.json`.
+
 ## Development
 
 ```sh
@@ -74,12 +87,20 @@ The app talks to `tailscaled` through its LocalAPI, the HTTP API that the
 
 | Endpoint | Used for |
 |---|---|
-| `GET /localapi/v0/watch-ipn-bus` | the stream of state changes that triggers refreshes |
-| `GET /localapi/v0/status` | backend state, this device, peers, users |
+| `GET /localapi/v0/watch-ipn-bus` | the stream of state changes that triggers refreshes, and login page URLs |
+| `GET /localapi/v0/status` | backend state, this device, peers, users, `tailscaled` version |
 | `GET /localapi/v0/profiles/`, `/profiles/current` | accounts |
 | `POST /localapi/v0/profiles/<id>` | switching accounts |
-| `PATCH /localapi/v0/prefs` | connect or disconnect, exit node |
-| `GET /localapi/v0/prefs` + `POST /localapi/v0/check-prefs` | the access check (`403` means no write access) |
+| `PUT /localapi/v0/profiles/` | adding an account (a new, empty profile) |
+| `DELETE /localapi/v0/profiles/<id>` | removing an account from this computer |
+| `POST /localapi/v0/login-interactive` | logging in, renewing the key |
+| `POST /localapi/v0/logout` | logging out |
+| `GET /localapi/v0/prefs` | the Settings pane |
+| `PATCH /localapi/v0/prefs` | connect or disconnect, exit node, the Settings pane |
+| `GET /localapi/v0/dns-config` | the DNS dialog |
+| `GET /localapi/v0/tka/status` | Tailnet Lock status |
+| `GET /localapi/v0/update/check` | whether a newer `tailscaled` exists |
+| `POST /localapi/v0/check-prefs` | the access check (`403` means no write access) |
 
 ### Project layout
 
@@ -95,18 +116,25 @@ lib/
   tray/
     tray_menu.dart           the tray menu as plain data (unit tested)
     tray_presenter.dart      turns that data into the native tray menu
-  settings/accounts_page.dart  the Accounts pane
+  settings/
+    settings_window.dart     the window: Accounts, Settings and About tabs
+    accounts_page.dart       the Accounts pane
+    settings_page.dart       the Settings pane
+    dns_dialog.dart          the DNS dialog behind Manage…
+    about_page.dart          the About pane
+    app_settings.dart        the app's own settings file
+    widgets.dart             shared widgets and the error snack bar
+  platform/
+    desktop.dart             XDG config directory, opening URLs (xdg-open)
+    autostart.dart           the XDG autostart entry
 linux/runner/                GTK runner: window starts hidden, close hides it
 assets/tray/                 tray icons (SVG sources and rendered PNGs)
 ```
 
 ## Known limitations
 
-- The Accounts pane has no Log Out or Add Account buttons yet. The Settings
-  and About panes from the macOS app are not implemented.
-- The tray icons are white, so they suit dark panels and are hard to see on
-  light ones.
+- The main window of the macOS app (Open Tailscale: devices, exit nodes,
+  Taildrop) is not implemented yet.
 - It has not been verified that `tailscaled` sends a notification when a peer
   goes online or offline, so the device list may lag until the next state
   change.
-- The app does not start on login by itself.

@@ -46,7 +46,12 @@ and format the code with `dart format`.
   to a `TrayEntry` tree. Menu logic belongs here, not in the presenter.
 - `lib/tray/tray_presenter.dart`: renders `TrayEntry` trees to native menus.
   Rebuilds the whole menu on every state change.
-- `lib/main.dart`: wiring, and dispatch of `TrayCommand`s. A `403` from an
+- `lib/settings/`: the settings window. User actions go through
+  `runAction` (`widgets.dart`), which shows a failure in a snack bar;
+  destructive ones ask first with `confirm`.
+- `lib/platform/`: the desktop around the app: XDG config directory,
+  `xdg-open`, the autostart entry. No packages for these.
+- `lib/main.dart`: wiring, and dispatch of `TrayCommand`s. A `403` from a tray
   action re-runs the access check and shows the window.
 
 ## LocalAPI notes
@@ -59,7 +64,26 @@ and format the code with `dart format`.
 - Prefs edits are `MaskedPrefs`: every changed field `X` needs `XSet: true`.
 - `watch-ipn-bus?mask=18` = `NotifyInitialState | NotifyNoPrivateKeys`.
   `NotifyRateLimit` (256) is no longer supported: the request fails with it.
+- `NotifyInitialNetMap` (8) is no longer supported either. The netmap is not
+  available on the bus; read what is needed from dedicated endpoints, such as
+  `dns-config` for the DNS settings.
+- `profiles/` needs write access, even for `GET`. `refresh` must not fail
+  because of it: status and prefs are readable by anyone, and a stale state
+  shows the previous account's data. A `403` there sets `canWrite` to false,
+  and `main.dart` then shows the access page.
+- The operator (`OperatorUser`) is a per-profile pref, and a new profile has
+  none. Add Account, Log Out and removing the current account all switch to
+  a new profile, and switching can land on a profile without one. The
+  controller compares `OperatorUser` before and after, and when it was lost,
+  sets it again as root with `pkexec tailscale set --operator=<user>`
+  (`lib/tailscale/operator.dart`). It is the only place the CLI is run.
 - Peer `ID` in `status` is the stable node ID that `ExitNodeID` expects.
+- Accounts: `logout` logs the current account out and deletes its profile.
+  `DELETE profiles/<id>` only forgets the profile; the node stays registered.
+  `PUT profiles/` switches to a new, empty profile.
+- Login pages arrive on the bus as `BrowseToURL` (and in `status.AuthURL`).
+  The controller opens one only after this app asked for a login, so logins
+  started by the CLI or another client do not open the browser.
 - To see real responses:
   `curl --unix-socket /var/run/tailscale/tailscaled.sock http://local-tailscaled.sock/localapi/v0/status`.
   Only use read endpoints this way: write endpoints change the maintainer's
@@ -82,8 +106,13 @@ and format the code with `dart format`.
 
 - `test/tray_menu_test.dart` asserts on the menu through `describe()`, a
   readable list of strings. Add a case there for any menu change.
-- `test/local_api_test.dart` runs `LocalApiClient` against a fake daemon on a
-  temporary unix socket. Never test against the real socket.
+- `test/local_api_test.dart` runs `LocalApiClient` against a fake daemon
+  (`test/fake_daemon.dart`) on a temporary unix socket. Never test against the
+  real socket.
+- `test/tailscale_controller_test.dart` keeps a fake IPN bus open and writes
+  events to it. Set `bufferOutput = false` on that response, or events are not
+  sent until it closes. Close the bus and let the controller see it end before
+  the client is closed; closing the client mid-read fails the test.
 - Code that touches nativeapi (tray, window) has no automated tests. It needs a
   manual check in the running app; ask the maintainer to do it. The clipboard
   can be checked with `wl-paste`.

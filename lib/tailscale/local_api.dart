@@ -58,10 +58,49 @@ class LocalApiClient {
     await _send('POST', 'profiles/${Uri.encodeComponent(id)}');
   }
 
+  /// Creates an empty profile and switches to it, ready for a new login.
+  Future<void> newProfile() async {
+    await _send('PUT', 'profiles/');
+  }
+
+  /// Forgets an account on this device without logging it out. Deleting the
+  /// current profile switches tailscaled to an empty one.
+  Future<void> deleteProfile(String id) async {
+    await _send('DELETE', 'profiles/${Uri.encodeComponent(id)}');
+  }
+
+  /// Logs the current account out. tailscaled also deletes its profile.
+  Future<void> logout() async {
+    await _send('POST', 'logout');
+  }
+
+  /// Asks the control server for a login page. Its URL arrives on the IPN bus
+  /// as `BrowseToURL`. When already logged in, this re-authenticates, which
+  /// renews the node key.
+  Future<void> startLoginInteractive() async {
+    await _send('POST', 'login-interactive');
+  }
+
+  Future<TailscalePrefs> prefs() async =>
+      TailscalePrefs.fromJson(await getJson('prefs') as Map<String, Object?>);
+
   /// Applies a `MaskedPrefs` edit: each changed field `X` comes with `XSet: true`.
   Future<void> editPrefs(Map<String, Object?> maskedPrefs) async {
     await _send('PATCH', 'prefs', maskedPrefs);
   }
+
+  /// Fails with `503` until tailscaled has a network map.
+  Future<DnsConfig> dnsConfig() async =>
+      DnsConfig.fromJson(await getJson('dns-config') as Map<String, Object?>);
+
+  Future<bool> tailnetLockEnabled() async {
+    final status = await getJson('tka/status') as Map<String, Object?>;
+    return status['Enabled'] == true;
+  }
+
+  Future<ClientVersion> checkForUpdate() async => ClientVersion.fromJson(
+    await getJson('update/check') as Map<String, Object?>,
+  );
 
   /// tailscaled's notification stream: one JSON object per state change.
   ///

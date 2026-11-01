@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../tailscale/status.dart';
 import '../tailscale/tailscale_controller.dart';
+import 'widgets.dart';
 
-/// The Accounts pane of the settings window: accounts on the left,
-/// the selected one's details on the right.
+/// The Accounts pane: accounts on the left, the selected one's details on the
+/// right.
 class AccountsPage extends StatefulWidget {
   const AccountsPage({super.key, required this.tailscale});
 
@@ -24,49 +25,80 @@ class _AccountsPageState extends State<AccountsPage> {
       builder: (context, _) {
         final tailscale = widget.tailscale;
         final profiles = tailscale.profiles;
+        final currentId = tailscale.currentProfileId;
+        final status = tailscale.status;
+        final loggedIn =
+            status != null && status.backendState != BackendState.needsLogin;
         final selected =
             profiles.where((p) => p.id == _selectedId).firstOrNull ??
-            profiles
-                .where((p) => p.id == tailscale.currentProfileId)
-                .firstOrNull;
+            profiles.where((p) => p.id == currentId).firstOrNull ??
+            profiles.firstOrNull;
         final theme = Theme.of(context);
 
-        return Scaffold(
-          body: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              SizedBox(
-                width: 240,
-                child: ListView(
-                  padding: const EdgeInsets.all(8),
-                  children: [
-                    for (final p in profiles)
-                      ListTile(
-                        selected: p.id == selected?.id,
-                        selectedTileColor: theme.colorScheme.secondaryContainer,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        leading: _Avatar(p.user, radius: 18),
-                        title: Text(_userName(p.user)),
-                        subtitle: Text(p.tailnet),
-                        onTap: () => setState(() => _selectedId = p.id),
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              width: 260,
+              child: Column(
+                children: [
+                  Expanded(
+                    child: ListView(
+                      padding: const EdgeInsets.all(8),
+                      children: [
+                        for (final p in profiles)
+                          ListTile(
+                            selected: p.id == selected?.id,
+                            selectedTileColor:
+                                theme.colorScheme.secondaryContainer,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            leading: UserAvatar(
+                              p.user,
+                              radius: 18,
+                              active: p.id == currentId && loggedIn,
+                            ),
+                            title: Text(
+                              p.user.loginName,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            subtitle: Text(
+                              p.tailnet,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            onTap: () => setState(() => _selectedId = p.id),
+                          ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        onPressed: status == null
+                            ? null
+                            : () => runAction(context, tailscale.addAccount),
+                        child: const Text('Add Account…'),
                       ),
-                  ],
-                ),
+                    ),
+                  ),
+                ],
               ),
-              const VerticalDivider(width: 1),
-              Expanded(
-                child: selected == null
-                    ? const Center(child: Text('No accounts'))
-                    : _AccountDetails(
-                        profile: selected,
-                        isCurrent: selected.id == tailscale.currentProfileId,
-                        status: tailscale.status,
-                      ),
-              ),
-            ],
-          ),
+            ),
+            const VerticalDivider(width: 1),
+            Expanded(
+              child: selected == null
+                  ? const Center(child: Text('No accounts'))
+                  : _AccountDetails(
+                      tailscale: tailscale,
+                      profile: selected,
+                      isCurrent: selected.id == currentId,
+                      loggedIn: selected.id == currentId && loggedIn,
+                    ),
+            ),
+          ],
         );
       },
     );
@@ -75,80 +107,143 @@ class _AccountsPageState extends State<AccountsPage> {
 
 class _AccountDetails extends StatelessWidget {
   const _AccountDetails({
+    required this.tailscale,
     required this.profile,
     required this.isCurrent,
-    required this.status,
+    required this.loggedIn,
   });
 
+  final TailscaleController tailscale;
   final LoginProfile profile;
   final bool isCurrent;
-  final TailscaleStatus? status;
+
+  /// This is the account in use, and it is logged in.
+  final bool loggedIn;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final loggedIn =
-        isCurrent &&
-        status != null &&
-        status!.backendState != BackendState.needsLogin;
-    final self = isCurrent ? status?.self : null;
+    final self = isCurrent ? tailscale.status?.self : null;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(32),
-      child: Column(
-        children: [
-          _Avatar(profile.user, radius: 36),
-          const SizedBox(height: 12),
-          Text(_userName(profile.user), style: theme.textTheme.titleMedium),
-          const SizedBox(height: 24),
-          Table(
-            columnWidths: const {
-              0: IntrinsicColumnWidth(),
-              1: IntrinsicColumnWidth(),
-            },
-            defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-            children: [
-              _row(context, 'Tailnet', Text(profile.tailnet)),
-              _row(context, 'Email', Text(profile.user.loginName)),
-              _row(
-                context,
-                'Status',
-                Row(
-                  mainAxisSize: MainAxisSize.min,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              children: [
+                UserAvatar(profile.user, radius: 36),
+                const SizedBox(height: 12),
+                Text(
+                  userName(profile.user),
+                  style: theme.textTheme.titleMedium,
+                ),
+                const SizedBox(height: 24),
+                Table(
+                  columnWidths: const {
+                    0: IntrinsicColumnWidth(),
+                    1: IntrinsicColumnWidth(),
+                  },
                   children: [
-                    Icon(
-                      Icons.circle,
-                      size: 10,
-                      color: loggedIn ? Colors.green : theme.disabledColor,
+                    _row(context, 'Tailnet', Text(profile.tailnet)),
+                    _row(context, 'Email', Text(profile.user.loginName)),
+                    _row(
+                      context,
+                      'Status',
+                      _WithButton(
+                        StatusDot(
+                          on: loggedIn,
+                          label: !isCurrent
+                              ? 'Not active'
+                              : loggedIn
+                              ? 'Logged In'
+                              : 'Logged Out',
+                        ),
+                        isCurrent
+                            ? OutlinedButton(
+                                onPressed: loggedIn
+                                    ? () => _logOut(context)
+                                    : null,
+                                child: const Text('Log Out…'),
+                              )
+                            : OutlinedButton(
+                                onPressed: () => runAction(
+                                  context,
+                                  () => tailscale.switchProfile(profile.id),
+                                ),
+                                child: const Text('Switch to user'),
+                              ),
+                      ),
                     ),
-                    const SizedBox(width: 6),
-                    Text(
-                      !isCurrent
-                          ? 'Not active'
-                          : loggedIn
-                          ? 'Logged In'
-                          : 'Logged Out',
+                    if (!profile.usesDefaultServer)
+                      _row(context, 'Server', Text(profile.controlUrl)),
+                    _row(
+                      context,
+                      'Expiry',
+                      _WithButton(
+                        Text(
+                          self == null
+                              ? '—'
+                              : self.keyExpiry == null
+                              ? 'Never'
+                              : _formatDate(self.keyExpiry!),
+                        ),
+                        OutlinedButton(
+                          onPressed: loggedIn
+                              ? () => runAction(context, tailscale.renew)
+                              : null,
+                          child: const Text('Renew…'),
+                        ),
+                      ),
                     ),
                   ],
                 ),
-              ),
-              _row(context, 'Server', Text(profile.controlUrl)),
-              _row(
-                context,
-                'Key Expiry',
-                Text(
-                  self == null
-                      ? '—'
-                      : self.keyExpiry == null
-                      ? 'Never'
-                      : _formatDate(self.keyExpiry!),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ],
-      ),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: OutlinedButton(
+              onPressed: () => _remove(context),
+              child: const Text('Remove Account…'),
+            ),
+          ),
+        ),
+      ],
     );
+  }
+
+  Future<void> _logOut(BuildContext context) async {
+    final confirmed = await confirm(
+      context,
+      title: 'Log out of ${profile.tailnet}?',
+      message:
+          'You will need to log in again to use this account on this '
+          'computer. The account is also removed from this list.',
+      action: 'Log Out',
+    );
+    if (confirmed && context.mounted) {
+      await runAction(context, tailscale.logout);
+    }
+  }
+
+  Future<void> _remove(BuildContext context) async {
+    final confirmed = await confirm(
+      context,
+      title: 'Remove ${profile.user.loginName}?',
+      message:
+          'The account is removed from this computer but not logged out: '
+          'this device stays in ${profile.tailnet} until its key expires. '
+          'To sign the device out, use Log Out instead.',
+      action: 'Remove',
+    );
+    if (confirmed && context.mounted) {
+      await runAction(context, () => tailscale.removeProfile(profile.id));
+    }
   }
 
   TableRow _row(BuildContext context, String label, Widget value) {
@@ -166,27 +261,22 @@ class _AccountDetails extends StatelessWidget {
   }
 }
 
-class _Avatar extends StatelessWidget {
-  const _Avatar(this.user, {required this.radius});
+/// A value with a button under it.
+class _WithButton extends StatelessWidget {
+  const _WithButton(this.value, this.button);
 
-  final UserProfile user;
-  final double radius;
+  final Widget value;
+  final Widget button;
 
   @override
   Widget build(BuildContext context) {
-    final name = _userName(user);
-    return CircleAvatar(
-      radius: radius,
-      child: Text(
-        name.isEmpty ? '?' : name.characters.first.toUpperCase(),
-        style: TextStyle(fontSize: radius * 0.9),
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [value, const SizedBox(height: 8), button],
     );
   }
 }
-
-String _userName(UserProfile user) =>
-    user.displayName.isNotEmpty ? user.displayName : user.loginName;
 
 String _formatDate(DateTime time) {
   final t = time.toLocal();

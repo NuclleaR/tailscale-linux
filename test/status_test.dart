@@ -79,5 +79,71 @@ void main() {
     expect(profile.id, '4494');
     expect(profile.tailnet, 'example.com');
     expect(profile.user.loginName, 'me@example.com');
+    expect(profile.user.profilePicUrl, '');
+    expect(profile.usesDefaultServer, isTrue);
+  });
+
+  test('a custom control server is not the default one', () {
+    final profile = LoginProfile.fromJson({
+      'ControlURL': 'https://hs.example.com',
+      'UserProfile': {'ProfilePicURL': 'https://example.com/me.png'},
+    });
+
+    expect(profile.usesDefaultServer, isFalse);
+    expect(profile.user.profilePicUrl, 'https://example.com/me.png');
+  });
+
+  test('status carries the daemon version and a pending login page', () {
+    final status = TailscaleStatus.fromJson({
+      'BackendState': 'NeedsLogin',
+      'Version': '1.104.4',
+      'AuthURL': 'https://login.tailscale.com/a/abc',
+    });
+
+    expect(status.version, '1.104.4');
+    expect(status.authUrl, 'https://login.tailscale.com/a/abc');
+  });
+
+  test('DNS config: only the split DNS routes a user set up', () {
+    // As tailscaled 1.104 returns it.
+    final config = DnsConfig.fromJson({
+      'Routes': {
+        'aytm.com': [
+          {'Addr': '8.8.8.8'},
+          {'Addr': '2001:4860:4860::8888'},
+        ],
+        'tailac164.ts.net.': null,
+        'ts.net.': [
+          {'Addr': '199.247.155.53'},
+        ],
+        'corp.example.': [
+          {'Addr': 'https://dns.example/dns-query'},
+        ],
+      },
+      'Domains': ['tailac164.ts.net', 'aytm.com'],
+      'Proxied': true,
+    });
+
+    expect(config.resolvers, isEmpty);
+    expect(config.searchDomains, ['tailac164.ts.net', 'aytm.com']);
+    expect(config.splitDnsRoutes, {
+      'aytm.com': ['8.8.8.8', '2001:4860:4860::8888'],
+      'corp.example': ['https://dns.example/dns-query'],
+    });
+  });
+
+  test('an update is available only with a newer version known', () {
+    expect(
+      ClientVersion.fromJson({'RunningLatest': true}).updateAvailable,
+      isFalse,
+    );
+    expect(ClientVersion.fromJson({}).updateAvailable, isFalse);
+    expect(
+      ClientVersion.fromJson({
+        'RunningLatest': false,
+        'LatestVersion': '1.106.0',
+      }).updateAvailable,
+      isTrue,
+    );
   });
 }

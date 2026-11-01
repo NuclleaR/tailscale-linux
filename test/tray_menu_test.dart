@@ -155,6 +155,26 @@ void main() {
     expect(describe(menu).first, 'Logged out (disabled)');
   });
 
+  test('logged out: nothing of the previous account shows', () {
+    // What tailscaled 1.104 reports after a logout: this host, and peers the
+    // engine still remembers, with no names, IPs or users.
+    final status = TailscaleStatus.fromJson({
+      'BackendState': 'NeedsLogin',
+      'Self': {'ID': '', 'HostName': 'serhii-arch', 'TailscaleIPs': null},
+      'Peer': {
+        'nodekey:1': {'ID': '', 'HostName': '', 'TailscaleIPs': null},
+      },
+      'User': null,
+    });
+
+    expect(describe(buildTrayMenu(status: status)), [
+      'Logged out (disabled)',
+      '---',
+      'Settings…',
+      'Quit',
+    ]);
+  });
+
   test('daemon unreachable', () {
     expect(describe(buildTrayMenu(status: null)), [
       'Tailscale is not running (disabled)',

@@ -6,19 +6,48 @@ import 'package:flutter/services.dart';
 import 'access/access_controller.dart';
 import 'access/access_page.dart';
 import 'app_window.dart';
-import 'settings/accounts_page.dart';
+import 'platform/autostart.dart';
+import 'platform/desktop.dart';
+import 'settings/app_settings.dart';
+import 'settings/settings_window.dart';
 import 'tailscale/local_api.dart';
+import 'tailscale/operator.dart';
 import 'tailscale/tailscale_controller.dart';
 import 'tray/tray_menu.dart';
 import 'tray/tray_presenter.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  final config = configHome();
+  final appSettings = AppSettings(
+    File('$config/tailscale_linux/settings.json'),
+  );
+  await appSettings.load();
+  final autostart = Autostart(
+    configHome: config,
+    executable: Platform.resolvedExecutable,
+  );
 
   final api = LocalApiClient();
   final access = AccessController(api.canWrite);
-  final tailscale = TailscaleController(api);
+  final tailscale = TailscaleController(
+    api,
+    openUrl: openUrl,
+    restoreOperator: setOperatorAsRoot,
+  );
   final window = AppWindow();
+
+  // Operator access lost (say, the current profile has no operator): show
+  // how to get it back. Once it is back, re-read everything.
+  tailscale.addListener(() {
+    if (!tailscale.canWrite && access.status == AccessStatus.granted) {
+      access.check().then((_) => window.show());
+    }
+  });
+  access.addListener(() {
+    if (access.status == AccessStatus.granted) tailscale.refresh();
+  });
 
   Future<void> run(TrayCommand command) async {
     try {
@@ -54,9 +83,7 @@ void main() {
     final status = tailscale.status;
     final connected = status?.isRunning ?? false;
     tray.update(
-      iconAsset: connected
-          ? 'assets/tray/connected.png'
-          : 'assets/tray/disconnected.png',
+      iconAsset: appSettings.trayIcon.asset(connected: connected),
       tooltip: switch (status) {
         null => 'Tailscale: not running',
         _ when connected => 'Tailscale: connected',
@@ -74,6 +101,7 @@ void main() {
   if (hasTray) {
     updateTray();
     tailscale.addListener(updateTray);
+    appSettings.addListener(updateTray);
   } else {
     debugPrint('tray: not supported here; showing the window instead');
   }
@@ -83,7 +111,14 @@ void main() {
     if (!hasTray || access.status != AccessStatus.granted) window.show();
   });
 
-  runApp(TailscaleApp(access: access, tailscale: tailscale));
+  runApp(
+    TailscaleApp(
+      access: access,
+      tailscale: tailscale,
+      appSettings: appSettings,
+      autostart: autostart,
+    ),
+  );
 }
 
 class TailscaleApp extends StatelessWidget {
@@ -91,10 +126,14 @@ class TailscaleApp extends StatelessWidget {
     super.key,
     required this.access,
     required this.tailscale,
+    required this.appSettings,
+    required this.autostart,
   });
 
   final AccessController access;
   final TailscaleController tailscale;
+  final AppSettings appSettings;
+  final Autostart autostart;
 
   @override
   Widget build(BuildContext context) {
@@ -108,7 +147,11 @@ class TailscaleApp extends StatelessWidget {
       home: ListenableBuilder(
         listenable: access,
         builder: (context, _) => access.status == AccessStatus.granted
-            ? AccountsPage(tailscale: tailscale)
+            ? SettingsWindow(
+                tailscale: tailscale,
+                appSettings: appSettings,
+                autostart: autostart,
+              )
             : AccessPage(controller: access),
       ),
     );
