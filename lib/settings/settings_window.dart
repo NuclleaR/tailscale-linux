@@ -26,11 +26,15 @@ class SettingsWindow extends StatefulWidget {
     required this.tailscale,
     required this.appSettings,
     required this.autostart,
+    required this.onBack,
   });
 
   final TailscaleController tailscale;
   final AppSettings appSettings;
   final Autostart autostart;
+
+  /// Goes back to the main window.
+  final VoidCallback onBack;
 
   @override
   State<SettingsWindow> createState() => _SettingsWindowState();
@@ -47,15 +51,31 @@ class _SettingsWindowState extends State<SettingsWindow> {
         children: [
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+            child: Stack(
               children: [
-                for (final tab in SettingsTab.values)
-                  _TabButton(
-                    tab: tab,
-                    selected: tab == _tab,
-                    onPressed: () => setState(() => _tab = tab),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    for (final tab in SettingsTab.values)
+                      _TabButton(
+                        tab: tab,
+                        selected: tab == _tab,
+                        onPressed: () => setState(() => _tab = tab),
+                      ),
+                  ],
+                ),
+                Positioned(
+                  left: 8,
+                  top: 0,
+                  bottom: 0,
+                  child: Center(
+                    child: IconButton(
+                      tooltip: 'Back',
+                      icon: const Icon(Icons.arrow_back),
+                      onPressed: widget.onBack,
+                    ),
                   ),
+                ),
               ],
             ),
           ),

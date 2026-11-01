@@ -30,6 +30,10 @@ final class OpenSettings extends TrayCommand {
   const OpenSettings();
 }
 
+final class OpenMainWindow extends TrayCommand {
+  const OpenMainWindow();
+}
+
 final class Quit extends TrayCommand {
   const Quit();
 }
@@ -71,10 +75,12 @@ List<TrayEntry> buildTrayMenu({
   required TailscaleStatus? status,
   List<LoginProfile> profiles = const [],
   String? currentProfileId,
+  List<IncomingFile> incomingFiles = const [],
 }) {
   const footer = [
     TraySeparator(),
     TrayItem('Settings…', command: OpenSettings()),
+    TrayItem('Open Tailscale', command: OpenMainWindow()),
     TrayItem('Quit', command: Quit()),
   ];
   if (status == null) {
@@ -89,6 +95,11 @@ List<TrayEntry> buildTrayMenu({
       ?_thisDeviceItem(status.self),
       _networkDevicesMenu(status),
       _exitNodesMenu(status),
+    ],
+    if (incomingFiles.isNotEmpty) ...[
+      const TraySeparator(),
+      for (final f in incomingFiles)
+        TrayItem('Receiving ${f.name}… ${f.progressLabel}'),
     ],
     ...footer,
   ];
@@ -189,15 +200,15 @@ TrayItem _deviceItem(Node node) {
   return TrayItem(_withOnline(node), command: ip == null ? null : CopyText(ip));
 }
 
-/// Online first, then by name.
+/// Reachable first, then by name.
 List<Node> _sorted(Iterable<Node> nodes) => nodes.toList()
   ..sort((a, b) {
-    if (a.online != b.online) return a.online ? -1 : 1;
+    if (a.reachable != b.reachable) return a.reachable ? -1 : 1;
     return a.name.compareTo(b.name);
   });
 
 String _withOnline(Node node) =>
-    node.online ? node.name : '${node.name} (offline)';
+    node.reachable ? node.name : '${node.name} (offline)';
 
 String _userName(UserProfile user) =>
     user.displayName.isNotEmpty ? user.displayName : user.loginName;

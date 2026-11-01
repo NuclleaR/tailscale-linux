@@ -16,7 +16,18 @@ This is an unofficial project and is not affiliated with Tailscale Inc.
   - **Network Devices**: your devices and other tailnet devices, online first.
     Click to copy a device's IP.
   - **Exit Nodes**: pick an exit node or turn it off.
-  - **Settings…** and **Quit**.
+  - **Settings…**, **Open Tailscale** and **Quit**.
+- **Main window** (Open Tailscale), shown while connected:
+  - **Devices**: searchable, grouped into pinned, yours, tagged and each
+    other user's. A device's details show its addresses (click to copy), OS
+    and key expiry, and let you pin it to the top.
+  - **Ping**: pings a device once a second and graphs the latency, with
+    whether the connection is direct or relayed.
+  - **Taildrop**: send files to your own devices, picked with the desktop's
+    file dialog (kdialog or zenity) or dragged onto the device.
+  - **Exit Nodes**: pick an exit node.
+- **Receiving files**: files sent to this computer with Taildrop are saved to
+  your Downloads folder, with a desktop notification (`notify-send`).
 - **Settings window** with three panes, as in the macOS app:
   - **Accounts**: tailnet, email, login status and key expiry for each
     account. Add an account (the login page opens in your browser), switch to
@@ -100,7 +111,15 @@ The app talks to `tailscaled` through its LocalAPI, the HTTP API that the
 | `GET /localapi/v0/dns-config` | the DNS dialog |
 | `GET /localapi/v0/tka/status` | Tailnet Lock status |
 | `GET /localapi/v0/update/check` | whether a newer `tailscaled` exists |
+| `POST /localapi/v0/ping` | Ping (disco pings) |
+| `GET /localapi/v0/file-targets` | which devices Taildrop can send to |
+| `PUT /localapi/v0/file-put/<id>/<name>` | sending a file |
+| `GET`, `DELETE /localapi/v0/files/…` | receiving files |
 | `POST /localapi/v0/check-prefs` | the access check (`403` means no write access) |
+
+One step runs the CLI: when a profile change leaves this user without
+operator rights, the app runs `pkexec tailscale set --operator=<user>`, which
+asks for your password.
 
 ### Project layout
 
@@ -113,6 +132,16 @@ lib/
     local_api.dart           LocalAPI client over the unix socket
     status.dart              status and profile models
     tailscale_controller.dart  app state, kept current from the IPN bus
+    taildrop_receiver.dart   saves received files to Downloads
+    operator.dart            restores the operator with pkexec
+  main_window/
+    main_window.dart         header, sidebar and sections
+    device_list.dart         device groups, search, sorting (unit tested)
+    devices_view.dart        the device list and selection
+    device_details.dart      one device's addresses and details
+    ping_section.dart        the Ping graph; pinger.dart runs the pings
+    taildrop_section.dart    sending files
+    exit_nodes_view.dart     the Exit Nodes section
   tray/
     tray_menu.dart           the tray menu as plain data (unit tested)
     tray_presenter.dart      turns that data into the native tray menu
@@ -125,16 +154,15 @@ lib/
     app_settings.dart        the app's own settings file
     widgets.dart             shared widgets and the error snack bar
   platform/
-    desktop.dart             XDG config directory, opening URLs (xdg-open)
+    desktop.dart             XDG folders, opening URLs, notifications
     autostart.dart           the XDG autostart entry
+    file_picker.dart         kdialog / zenity file dialog
 linux/runner/                GTK runner: window starts hidden, close hides it
 assets/tray/                 tray icons (SVG sources and rendered PNGs)
 ```
 
 ## Known limitations
 
-- The main window of the macOS app (Open Tailscale: devices, exit nodes,
-  Taildrop) is not implemented yet.
 - It has not been verified that `tailscaled` sends a notification when a peer
   goes online or offline, so the device list may lag until the next state
   change.

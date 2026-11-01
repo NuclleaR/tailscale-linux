@@ -54,9 +54,15 @@ class Node {
     this.isExitNode = false,
     this.exitNodeOption = false,
     this.keyExpiry,
+    this.os = '',
+    this.tags = const [],
+    this.recentHandshake = false,
+    this.answeredPing = false,
   });
 
-  factory Node.fromJson(Map<String, Object?> json) => Node(
+  /// [now] decides whether the last handshake is recent; the controller
+  /// re-reads status periodically, so this stays current.
+  factory Node.fromJson(Map<String, Object?> json, {DateTime? now}) => Node(
     id: json['ID'] as String? ?? '',
     hostName: json['HostName'] as String? ?? '',
     dnsName: json['DNSName'] as String? ?? '',
@@ -72,6 +78,42 @@ class Node {
       final String s => DateTime.tryParse(s),
       _ => null,
     },
+    os: json['OS'] as String? ?? '',
+    tags: [
+      for (final t in json['Tags'] as List<Object?>? ?? const [])
+        if (t is String) t,
+    ],
+    recentHandshake: switch (json['LastHandshake']) {
+      final String s => switch (DateTime.tryParse(s)) {
+        // Go's zero time means "never".
+        final t? when t.year > 1 =>
+          (now ?? DateTime.now()).difference(t) <= recentFor,
+        _ => false,
+      },
+      _ => false,
+    },
+  );
+
+  /// How long after a WireGuard handshake, or a reply to a ping, a peer
+  /// counts as reachable. WireGuard renews keys every 2 minutes on a tunnel
+  /// carrying traffic.
+  static const recentFor = Duration(minutes: 3);
+
+  /// This node, marked as having just answered a ping from this app.
+  Node withAnsweredPing() => Node(
+    id: id,
+    hostName: hostName,
+    dnsName: dnsName,
+    tailscaleIps: tailscaleIps,
+    online: online,
+    userId: userId,
+    isExitNode: isExitNode,
+    exitNodeOption: exitNodeOption,
+    keyExpiry: keyExpiry,
+    os: os,
+    tags: tags,
+    recentHandshake: recentHandshake,
+    answeredPing: true,
   );
 
   /// Stable node ID, the value `ExitNodeID` takes.
@@ -91,13 +133,39 @@ class Node {
   /// Null when the key never expires.
   final DateTime? keyExpiry;
 
+  /// Such as `linux`, `macOS`, `iOS`; empty when unknown.
+  final String os;
+
+  /// ACL tags, such as `tag:server`. A tagged node belongs to no user.
+  final List<String> tags;
+
+  /// A WireGuard handshake with this peer happened within [recentFor].
+  final bool recentHandshake;
+
+  /// This peer answered a ping from this app within [recentFor]. Pings are
+  /// disco pings: they cause no WireGuard handshake, so status does not
+  /// show them.
+  final bool answeredPing;
+
+  /// Shown as online: connected to the coordination server, or answering
+  /// over the tunnel. An iPhone in the background is offline for the server
+  /// yet still answers.
+  bool get reachable => online || recentHandshake || answeredPing;
+
   /// The MagicDNS machine name, as the admin console shows it.
   String get name {
     final label = dnsName.split('.').first;
     return label.isEmpty ? hostName : label;
   }
 
+  /// The full MagicDNS name, without the trailing dot.
+  String get magicDnsName => dnsName.endsWith('.')
+      ? dnsName.substring(0, dnsName.length - 1)
+      : dnsName;
+
   String? get ipv4 => tailscaleIps.where((ip) => ip.contains('.')).firstOrNull;
+
+  String? get ipv6 => tailscaleIps.where((ip) => ip.contains(':')).firstOrNull;
 }
 
 /// A snapshot of `GET /localapi/v0/status`.
@@ -112,7 +180,8 @@ class TailscaleStatus {
     this.authUrl = '',
   });
 
-  factory TailscaleStatus.fromJson(Map<String, Object?> json) {
+  factory TailscaleStatus.fromJson(Map<String, Object?> json, {DateTime? now}) {
+    now ??= DateTime.now();
     final users = <int, UserProfile>{
       for (final u
           in (json['User'] as Map<String, Object?>? ?? const {}).values)
@@ -122,13 +191,13 @@ class TailscaleStatus {
     return TailscaleStatus(
       backendState: BackendState.parse(json['BackendState']),
       self: switch (json['Self']) {
-        final Map<String, Object?> map => Node.fromJson(map),
+        final Map<String, Object?> map => Node.fromJson(map, now: now),
         _ => null,
       },
       peers: [
         for (final p
             in (json['Peer'] as Map<String, Object?>? ?? const {}).values)
-          Node.fromJson(p as Map<String, Object?>),
+          Node.fromJson(p as Map<String, Object?>, now: now),
       ],
       tailnetName: switch (json['CurrentTailnet']) {
         final Map<String, Object?> map => map['Name'] as String?,
@@ -160,6 +229,20 @@ class TailscaleStatus {
   };
 
   Node? get exitNode => peers.where((p) => p.isExitNode).firstOrNull;
+
+  /// This status with the peers in [nodeIds] marked as having answered a
+  /// ping.
+  TailscaleStatus withAnsweredPings(Set<String> nodeIds) => TailscaleStatus(
+    backendState: backendState,
+    self: self,
+    peers: [
+      for (final p in peers) nodeIds.contains(p.id) ? p.withAnsweredPing() : p,
+    ],
+    tailnetName: tailnetName,
+    users: users,
+    version: version,
+    authUrl: authUrl,
+  );
 }
 
 /// An account tailscaled knows about (`ipn.LoginProfile`).
@@ -301,4 +384,105 @@ class ClientVersion {
   final String latestVersion;
 
   bool get updateAvailable => !runningLatest && latestVersion.isNotEmpty;
+}
+
+/// One ping's outcome, from `POST /localapi/v0/ping` (an
+/// `ipnstate.PingResult`). tailscaled reports a failed ping in [error], with
+/// status 200.
+class PingResult {
+  const PingResult({
+    this.error = '',
+    this.latency = Duration.zero,
+    this.endpoint = '',
+    this.peerRelay = '',
+    this.derpRegionCode = '',
+  });
+
+  factory PingResult.fromJson(Map<String, Object?> json) => PingResult(
+    error: json['Err'] as String? ?? '',
+    latency: Duration(
+      microseconds:
+          ((json['LatencySeconds'] as num? ?? 0) *
+                  Duration.microsecondsPerSecond)
+              .round(),
+    ),
+    endpoint: json['Endpoint'] as String? ?? '',
+    peerRelay: json['PeerRelay'] as String? ?? '',
+    derpRegionCode: json['DERPRegionCode'] as String? ?? '',
+  );
+
+  /// Empty when the ping succeeded.
+  final String error;
+  final Duration latency;
+
+  /// `ip:port` when the reply came over a direct connection.
+  final String endpoint;
+
+  /// Set when the reply came through another tailnet node acting as a relay.
+  final String peerRelay;
+
+  /// Set when the reply came through a DERP relay server, such as `waw`.
+  final String derpRegionCode;
+
+  bool get ok => error.isEmpty;
+
+  /// How the reply travelled: "direct", "peer relay" or "relay: waw".
+  String get path => switch (this) {
+    PingResult(endpoint: != '') => 'direct',
+    PingResult(peerRelay: != '') => 'peer relay',
+    PingResult(derpRegionCode: != '') => 'relay: $derpRegionCode',
+    _ => '',
+  };
+}
+
+/// A file being received with Taildrop right now, from the bus's
+/// `IncomingFiles` (an `ipn.PartialFile`).
+class IncomingFile {
+  const IncomingFile({
+    required this.name,
+    this.declaredSize = -1,
+    this.received = 0,
+    this.done = false,
+  });
+
+  factory IncomingFile.fromJson(Map<String, Object?> json) => IncomingFile(
+    name: json['Name'] as String? ?? '',
+    declaredSize: json['DeclaredSize'] as int? ?? -1,
+    received: json['Received'] as int? ?? 0,
+    done: json['Done'] as bool? ?? false,
+  );
+
+  final String name;
+
+  /// The whole file is in. tailscaled sends its last notification about a
+  /// file before dropping it from the list, so a finished file never
+  /// disappears on its own: it has to be recognised by this.
+  final bool done;
+
+  bool get finished => done || (declaredSize > 0 && received >= declaredSize);
+
+  /// -1 when the sender did not say.
+  final int declaredSize;
+
+  /// Bytes received so far.
+  final int received;
+
+  /// 0 to 1, or null when the size is unknown.
+  double? get fraction =>
+      declaredSize > 0 ? (received / declaredSize).clamp(0, 1) : null;
+
+  /// "45%", or the megabytes so far when the size is unknown.
+  String get progressLabel => switch (fraction) {
+    final f? => '${(f * 100).floor()}%',
+    null => '${(received / 1e6).toStringAsFixed(1)} MB',
+  };
+}
+
+/// A file received with Taildrop, waiting in tailscaled to be fetched
+/// (an `apitype.WaitingFile`).
+class WaitingFile {
+  const WaitingFile(this.name, this.size);
+
+  final String name;
+  final int size;
 }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -102,6 +103,80 @@ class LocalApiClient {
     await getJson('update/check') as Map<String, Object?>,
   );
 
+  /// Stable IDs of the devices Taildrop can send files to: this user's own
+  /// devices that accept files.
+  Future<Set<String>> fileTargets() async =>
+      switch (await getJson('file-targets')) {
+        final List<Object?> targets => {
+          for (final t in targets)
+            if (t case {'Node': {'StableID': final String id}}) id,
+        },
+        _ => const {},
+      };
+
+  /// Sends [file] with Taildrop to the device [nodeId], under [name].
+  ///
+  /// tailscaled forwards the bytes to the device as they arrive, so the call
+  /// returns once the device has the whole file. [onProgress] reports the
+  /// bytes handed over so far.
+  Future<void> putFile(
+    String nodeId,
+    String name,
+    File file, {
+    void Function(int sent, int total)? onProgress,
+  }) async {
+    final total = await file.length();
+    final request = await _http.openUrl(
+      'PUT',
+      Uri(
+        scheme: 'http',
+        host: _host,
+        pathSegments: ['localapi', 'v0', 'file-put', nodeId, name],
+      ),
+    );
+    request.contentLength = total;
+    var sent = 0;
+    await request.addStream(
+      file.openRead().map((chunk) {
+        sent += chunk.length;
+        onProgress?.call(sent, total);
+        return chunk;
+      }),
+    );
+    final response = await request.close();
+    final text = await response.transform(utf8.decoder).join();
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw LocalApiException(response.statusCode, text.trim());
+    }
+  }
+
+  /// Sends one disco ping to [ip], which reports the path the reply took.
+  ///
+  /// tailscaled waits for a reply as long as the request is open, so the
+  /// request is aborted after [timeout].
+  Future<PingResult> ping(
+    String ip, {
+    Duration timeout = const Duration(seconds: 5),
+  }) async {
+    final request = await _http.postUrl(
+      Uri.http(_host, '/localapi/v0/ping', {'ip': ip, 'type': 'disco'}),
+    );
+    final timer = Timer(
+      timeout,
+      () => request.abort(TimeoutException('no reply', timeout)),
+    );
+    try {
+      final response = await request.close();
+      final text = await response.transform(utf8.decoder).join();
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw LocalApiException(response.statusCode, text.trim());
+      }
+      return PingResult.fromJson(jsonDecode(text) as Map<String, Object?>);
+    } finally {
+      timer.cancel();
+    }
+  }
+
   /// tailscaled's notification stream: one JSON object per state change.
   ///
   /// The first event carries the current state. The stream ends when the
@@ -143,13 +218,52 @@ class LocalApiClient {
     }
   }
 
+  /// Files received with Taildrop that tailscaled holds until they are
+  /// fetched.
+  Future<List<WaitingFile>> waitingFiles() async =>
+      switch (await getJson('files/')) {
+        final List<Object?> files => [
+          for (final f in files)
+            if (f case {'Name': final String name})
+              WaitingFile(name, f['Size'] as int? ?? 0),
+        ],
+        _ => const [],
+      };
+
+  /// Writes the waiting file [name] to [to].
+  Future<void> downloadWaitingFile(String name, File to) async {
+    final request = await _http.getUrl(_fileUri(name));
+    final response = await request.close();
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final text = await response.transform(utf8.decoder).join();
+      throw LocalApiException(response.statusCode, text.trim());
+    }
+    final sink = to.openWrite();
+    try {
+      await sink.addStream(response);
+    } finally {
+      await sink.close();
+    }
+  }
+
+  /// Tells tailscaled the waiting file [name] is no longer needed.
+  Future<void> deleteWaitingFile(String name) async {
+    await _sendUri('DELETE', _fileUri(name));
+  }
+
+  Uri _fileUri(String name) => Uri(
+    scheme: 'http',
+    host: _host,
+    pathSegments: ['localapi', 'v0', 'files', name],
+  );
+
   void close() => _http.close(force: true);
 
-  Future<String> _send(String method, String endpoint, [Object? body]) async {
-    final request = await _http.openUrl(
-      method,
-      Uri.http(_host, '/localapi/v0/$endpoint'),
-    );
+  Future<String> _send(String method, String endpoint, [Object? body]) =>
+      _sendUri(method, Uri.http(_host, '/localapi/v0/$endpoint'), body);
+
+  Future<String> _sendUri(String method, Uri uri, [Object? body]) async {
+    final request = await _http.openUrl(method, uri);
     if (body != null) {
       request.headers.contentType = ContentType.json;
       request.write(jsonEncode(body));

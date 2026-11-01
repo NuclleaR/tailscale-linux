@@ -6,12 +6,14 @@ import 'package:flutter/services.dart';
 import 'access/access_controller.dart';
 import 'access/access_page.dart';
 import 'app_window.dart';
+import 'main_window/main_window.dart';
 import 'platform/autostart.dart';
 import 'platform/desktop.dart';
 import 'settings/app_settings.dart';
 import 'settings/settings_window.dart';
 import 'tailscale/local_api.dart';
 import 'tailscale/operator.dart';
+import 'tailscale/taildrop_receiver.dart';
 import 'tailscale/tailscale_controller.dart';
 import 'tray/tray_menu.dart';
 import 'tray/tray_presenter.dart';
@@ -31,12 +33,43 @@ Future<void> main() async {
 
   final api = LocalApiClient();
   final access = AccessController(api.canWrite);
-  final tailscale = TailscaleController(
+  late final TailscaleController tailscale;
+  final taildrop = TaildropReceiver(
+    api,
+    downloadDir: downloadDirectory,
+    onSaved: (name, file) {
+      tailscale.fileSaved(name);
+      notify(
+        'Received ${file.uri.pathSegments.last} from Taildrop',
+        body: 'Saved to ${file.parent.path}',
+      );
+    },
+  );
+  tailscale = TailscaleController(
     api,
     openUrl: openUrl,
     restoreOperator: setOperatorAsRoot,
+    onFilesWaiting: taildrop.receiveWaiting,
   );
   final window = AppWindow();
+  final screen = ValueNotifier(AppScreen.main);
+
+  void showScreen(AppScreen s) {
+    screen.value = s;
+    window.show();
+  }
+
+  // Poll status only while the window is open, focused or not. Closing it
+  // hides it (state `hidden`), leaving only the tray, which polls nothing.
+  AppLifecycleListener(
+    onStateChange: (state) {
+      debugPrint('window: $state');
+      tailscale.setWindowOpen(
+        state == AppLifecycleState.resumed ||
+            state == AppLifecycleState.inactive,
+      );
+    },
+  );
 
   // Operator access lost (say, the current profile has no operator): show
   // how to get it back. Once it is back, re-read everything.
@@ -46,7 +79,10 @@ Future<void> main() async {
     }
   });
   access.addListener(() {
-    if (access.status == AccessStatus.granted) tailscale.refresh();
+    if (access.status != AccessStatus.granted) return;
+    tailscale.refresh();
+    // Files that arrived while the app was not running.
+    taildrop.receiveWaiting();
   });
 
   Future<void> run(TrayCommand command) async {
@@ -61,7 +97,9 @@ Future<void> main() async {
         case CopyText(:final text):
           await Clipboard.setData(ClipboardData(text: text));
         case OpenSettings():
-          window.show();
+          showScreen(AppScreen.settings);
+        case OpenMainWindow():
+          showScreen(AppScreen.main);
         case Quit():
           exit(0);
       }
@@ -93,6 +131,7 @@ Future<void> main() async {
         status: status,
         profiles: tailscale.profiles,
         currentProfileId: tailscale.currentProfileId,
+        incomingFiles: tailscale.incomingFiles,
       ),
     );
   }
@@ -117,9 +156,13 @@ Future<void> main() async {
       tailscale: tailscale,
       appSettings: appSettings,
       autostart: autostart,
+      screen: screen,
     ),
   );
 }
+
+/// What the app's single window shows.
+enum AppScreen { main, settings }
 
 class TailscaleApp extends StatelessWidget {
   const TailscaleApp({
@@ -128,12 +171,14 @@ class TailscaleApp extends StatelessWidget {
     required this.tailscale,
     required this.appSettings,
     required this.autostart,
+    required this.screen,
   });
 
   final AccessController access;
   final TailscaleController tailscale;
   final AppSettings appSettings;
   final Autostart autostart;
+  final ValueNotifier<AppScreen> screen;
 
   @override
   Widget build(BuildContext context) {
@@ -145,14 +190,22 @@ class TailscaleApp extends StatelessWidget {
         brightness: Brightness.dark,
       ),
       home: ListenableBuilder(
-        listenable: access,
-        builder: (context, _) => access.status == AccessStatus.granted
-            ? SettingsWindow(
-                tailscale: tailscale,
-                appSettings: appSettings,
-                autostart: autostart,
-              )
-            : AccessPage(controller: access),
+        listenable: Listenable.merge([access, screen]),
+        builder: (context, _) => access.status != AccessStatus.granted
+            ? AccessPage(controller: access)
+            : switch (screen.value) {
+                AppScreen.main => MainWindow(
+                  tailscale: tailscale,
+                  appSettings: appSettings,
+                  onOpenSettings: () => screen.value = AppScreen.settings,
+                ),
+                AppScreen.settings => SettingsWindow(
+                  tailscale: tailscale,
+                  appSettings: appSettings,
+                  autostart: autostart,
+                  onBack: () => screen.value = AppScreen.main,
+                ),
+              },
       ),
     );
   }

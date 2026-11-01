@@ -132,6 +132,42 @@ void main() {
     });
   });
 
+  test(
+    'a peer offline for the server but with a fresh handshake is reachable',
+    () {
+      final now = DateTime.utc(2026, 11, 1, 17, 3);
+      Node peer({required bool online, required String handshake}) =>
+          Node.fromJson({
+            'ID': 'n',
+            'Online': online,
+            'LastHandshake': handshake,
+          }, now: now);
+
+      // iPhone in the background: offline for the server, answering pings.
+      expect(
+        peer(
+          online: false,
+          handshake: '2026-11-01T18:01:37.68+01:00',
+        ).reachable,
+        isTrue,
+      );
+      expect(
+        peer(online: false, handshake: '2026-11-01T16:59:00Z').reachable,
+        isFalse,
+        reason: 'older than 3 minutes',
+      );
+      expect(
+        peer(online: false, handshake: '0001-01-01T00:00:00Z').reachable,
+        isFalse,
+        reason: 'zero time means never',
+      );
+      expect(
+        peer(online: true, handshake: '0001-01-01T00:00:00Z').reachable,
+        isTrue,
+      );
+    },
+  );
+
   test('an update is available only with a newer version known', () {
     expect(
       ClientVersion.fromJson({'RunningLatest': true}).updateAvailable,

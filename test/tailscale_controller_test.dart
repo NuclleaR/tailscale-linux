@@ -15,6 +15,7 @@ import 'fake_daemon.dart';
 class FakeTailscaled {
   String operator = 'me';
   String backendState = 'Running';
+  List<Map<String, Object?>> peers = [];
 
   /// Profiles that have no operator.
   final noOperator = <String>{};
@@ -44,7 +45,12 @@ class FakeTailscaled {
     final isOperator = operator == 'me';
     switch ((req.method, endpoint)) {
       case ('GET', 'status'):
-        response.write(jsonEncode({'BackendState': backendState}));
+        response.write(
+          jsonEncode({
+            'BackendState': backendState,
+            'Peer': {for (final (i, p) in peers.indexed) 'nodekey:$i': p},
+          }),
+        );
       case ('GET', 'prefs'):
         response.write(jsonEncode({'OperatorUser': operator}));
       case (_, 'profiles/' || 'profiles/current') when !isOperator:
@@ -122,6 +128,32 @@ void main() {
     expect(tailscale.currentProfileId, isNull);
   });
 
+  test(
+    'a peer offline for the server that answers a ping is reachable',
+    () async {
+      // An iPhone in the background.
+      daemon.peers = [
+        {
+          'ID': 'nPhone',
+          'Online': false,
+          'TailscaleIPs': ['100.64.0.7'],
+        },
+      ];
+      await tailscale.refresh();
+      expect(tailscale.status!.peers.single.reachable, isFalse);
+
+      expect((await tailscale.ping('100.64.0.7')).ok, isTrue);
+      expect(tailscale.status!.peers.single.reachable, isTrue);
+
+      await tailscale.refresh();
+      expect(
+        tailscale.status!.peers.single.reachable,
+        isTrue,
+        reason: 'kept across refreshes',
+      );
+    },
+  );
+
   test('opens a login page only after asking for one', () async {
     final opened = <String>[];
     tailscale = TailscaleController(daemon.client, openUrl: opened.add);
@@ -150,6 +182,55 @@ void main() {
     await send({'BrowseToURL': 'https://login/mine'});
     await send({'BrowseToURL': 'https://login/again'});
     expect(opened, ['https://login/mine']);
+  });
+
+  test('transfer progress updates without re-reading the state', () async {
+    tailscale.start();
+    final events = await daemon.bus;
+    addTearDown(() async {
+      // As above. The last event leaves a file incoming, so losing the bus
+      // changes something and notifies.
+      final lost = nextChange(tailscale);
+      await events.close();
+      await lost;
+      tailscale.dispose();
+    });
+
+    Future<void> send(Map<String, Object?> event) async {
+      final changed = nextChange(tailscale);
+      events.write('${jsonEncode(event)}\n');
+      await events.flush();
+      await changed;
+    }
+
+    await send({
+      'IncomingFiles': [
+        {'Name': 'a.jpg', 'DeclaredSize': 10, 'Received': 5},
+      ],
+    });
+    expect(tailscale.incomingFiles.single.progressLabel, '50%');
+
+    // tailscaled's last word on a file still lists it, as done.
+    await send({
+      'IncomingFiles': [
+        {'Name': 'a.jpg', 'DeclaredSize': 10, 'Received': 10, 'Done': true},
+      ],
+    });
+    expect(tailscale.incomingFiles, isEmpty);
+
+    await send({'IncomingFiles': []});
+    expect(tailscale.incomingFiles, isEmpty);
+
+    await send({
+      'IncomingFiles': [
+        {'Name': 'b.jpg'},
+        {'Name': 'c.jpg', 'DeclaredSize': 10, 'Received': 1},
+      ],
+    });
+    // Saving a file ends it even if no notification said so.
+    tailscale.fileSaved('c.jpg');
+    expect(tailscale.incomingFiles.single.name, 'b.jpg');
+    expect(daemon.requests, isEmpty, reason: 'no refresh for progress');
   });
 }
 

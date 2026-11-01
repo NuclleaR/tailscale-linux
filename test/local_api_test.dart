@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -48,6 +49,83 @@ void main() {
     expect(
       [prefs.shieldsUp, prefs.corpDns, prefs.routeAll],
       [true, true, false],
+    );
+  });
+
+  test('putFile streams the file to file-put, escaping the name', () async {
+    final dir = await Directory.systemTemp.createTemp('putfile_test');
+    addTearDown(() => dir.delete(recursive: true));
+    final file = File('${dir.path}/my report #1.txt');
+    await file.writeAsString('hello taildrop');
+
+    String? seen;
+    final client = await fakeDaemon((req) async {
+      final body = await utf8.decodeStream(req);
+      seen =
+          '${req.method} ${req.uri.path} '
+          'length=${req.headers.contentLength} $body';
+      req.response.statusCode = HttpStatus.ok;
+      await req.response.close();
+    });
+    final progress = <int>[];
+
+    await client.putFile(
+      'nUSV4RnEZh11CNTRL',
+      'my report #1.txt',
+      file,
+      onProgress: (sent, total) => progress.add(sent),
+    );
+
+    expect(
+      seen,
+      'PUT /localapi/v0/file-put/nUSV4RnEZh11CNTRL/my%20report%20%231.txt '
+      'length=14 hello taildrop',
+    );
+    expect(progress.last, 14);
+  });
+
+  test('waitingFiles lists names and sizes', () async {
+    final client = await fakeDaemon((req) {
+      req.response.write('[{"Name":"a b.txt","Size":3}]');
+      req.response.close();
+    });
+
+    final files = await client.waitingFiles();
+    expect(files.map((f) => '${f.name}:${f.size}'), ['a b.txt:3']);
+  });
+
+  test('fileTargets lists the stable IDs', () async {
+    final client = await fakeDaemon((req) {
+      req.response.write(
+        '[{"Node":{"StableID":"nA","Name":"lbox."},"PeerAPIURL":"http://x"},'
+        '{"Node":{"StableID":"nB"}}]',
+      );
+      req.response.close();
+    });
+
+    expect(await client.fileTargets(), {'nA', 'nB'});
+  });
+
+  test('ping sends a disco ping and gives up after the timeout', () async {
+    final seen = <String>[];
+    final client = await fakeDaemon((req) {
+      seen.add('${req.method} ${req.uri.path}?${req.uri.query}');
+      if (req.uri.queryParameters['ip'] == '100.64.0.9') {
+        return; // Never answers, like a ping to an unreachable peer.
+      }
+      req.response.write(
+        '{"Err":"","LatencySeconds":0.02,"DERPRegionCode":"waw"}',
+      );
+      req.response.close();
+    });
+
+    final result = await client.ping('100.64.0.2');
+    expect(result.path, 'relay: waw');
+    expect(seen.single, 'POST /localapi/v0/ping?ip=100.64.0.2&type=disco');
+
+    await expectLater(
+      client.ping('100.64.0.9', timeout: const Duration(milliseconds: 100)),
+      throwsA(isA<TimeoutException>()),
     );
   });
 

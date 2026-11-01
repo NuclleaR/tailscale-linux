@@ -55,7 +55,7 @@ static void my_application_activate(GApplication* application) {
     gtk_window_set_title(window, "Tailscale");
   }
 
-  gtk_window_set_default_size(window, 760, 600);
+  gtk_window_set_default_size(window, 1000, 680);
   g_signal_connect(window, "delete-event", G_CALLBACK(delete_event_cb),
                    nullptr);
 

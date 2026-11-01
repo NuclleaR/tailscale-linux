@@ -33,12 +33,20 @@ class AppSettings extends ChangeNotifier {
   TrayIconColor get trayIcon => _trayIcon;
   TrayIconColor _trayIcon = TrayIconColor.white;
 
+  /// Stable node IDs of the devices pinned to the top of the device list.
+  Set<String> get pinnedDevices => Set.unmodifiable(_pinnedDevices);
+  Set<String> _pinnedDevices = {};
+
   /// Reads the file. A missing or unreadable file leaves the defaults.
   Future<void> load() async {
     try {
       final json = jsonDecode(await file.readAsString());
       if (json is Map<String, Object?>) {
         _trayIcon = TrayIconColor.parse(json['trayIcon']);
+        _pinnedDevices = {
+          for (final id in json['pinnedDevices'] as List<Object?>? ?? const [])
+            if (id is String) id,
+        };
       }
     } on FileSystemException {
       return;
@@ -55,11 +63,23 @@ class AppSettings extends ChangeNotifier {
     await _save();
   }
 
+  Future<void> setPinned(String deviceId, bool pinned) async {
+    if (pinned) {
+      _pinnedDevices.add(deviceId);
+    } else {
+      _pinnedDevices.remove(deviceId);
+    }
+    notifyListeners();
+    await _save();
+  }
+
   Future<void> _save() async {
     await file.parent.create(recursive: true);
     await file.writeAsString(
-      const JsonEncoder.withIndent('  ')
-          .convert({'trayIcon': _trayIcon.wireName}),
+      const JsonEncoder.withIndent('  ').convert({
+        'trayIcon': _trayIcon.wireName,
+        'pinnedDevices': _pinnedDevices.toList()..sort(),
+      }),
     );
   }
 }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
@@ -13,8 +14,12 @@ class TailscaleController extends ChangeNotifier {
     this.reconnectDelay = const Duration(seconds: 2),
     void Function(String url)? openUrl,
     Future<void> Function(String user)? restoreOperator,
+    this.onFilesWaiting,
   }) : _openUrl = openUrl ?? _ignoreUrl,
        _restoreOperator = restoreOperator ?? _cannotRestoreOperator;
+
+  /// Called when tailscaled holds files received with Taildrop.
+  final VoidCallback? onFilesWaiting;
 
   final LocalApiClient _api;
 
@@ -46,8 +51,20 @@ class TailscaleController extends ChangeNotifier {
   String? get currentProfileId => _currentProfileId;
   String? _currentProfileId;
 
+  /// Stable IDs of the devices Taildrop can send to. Empty unless connected.
+  Set<String> get fileTargets => _fileTargets;
+  Set<String> _fileTargets = const {};
+
+  /// Files being received with Taildrop right now.
+  List<IncomingFile> get incomingFiles => _incomingFiles;
+  List<IncomingFile> _incomingFiles = const [];
+
+  /// See [setWindowOpen].
+  static const openRefreshInterval = Duration(seconds: 60);
+
   StreamSubscription<Object?>? _bus;
   Timer? _reconnect;
+  Timer? _openRefresh;
   bool _refreshing = false;
   bool _refreshAgain = false;
   bool _disposed = false;
@@ -119,6 +136,68 @@ class TailscaleController extends ChangeNotifier {
 
   Future<ClientVersion> checkForUpdate() => _api.checkForUpdate();
 
+  /// A peer that answers shows as reachable for [Node.recentFor], even when
+  /// the coordination server says it is offline.
+  Future<PingResult> ping(String ip) async {
+    final result = await _api.ping(ip);
+    final status = _status;
+    final peer = status?.peers
+        .where((p) => p.tailscaleIps.contains(ip))
+        .firstOrNull;
+    if (result.ok && status != null && peer != null) {
+      _pingReplies[peer.id] = DateTime.now();
+      if (!peer.reachable) {
+        _status = _withPingReplies(status);
+        notifyListeners();
+      }
+    }
+    return result;
+  }
+
+  /// The received file [name] has been saved: it is no longer incoming,
+  /// whatever the last notification said.
+  void fileSaved(String name) {
+    final before = _incomingFiles.length;
+    _incomingFiles = _incomingFiles.where((f) => f.name != name).toList();
+    if (_incomingFiles.length != before) notifyListeners();
+  }
+
+  /// When each peer last answered a ping from this app, by stable ID.
+  final Map<String, DateTime> _pingReplies = {};
+
+  TailscaleStatus _withPingReplies(TailscaleStatus status) {
+    final now = DateTime.now();
+    _pingReplies.removeWhere((_, t) => now.difference(t) > Node.recentFor);
+    return _pingReplies.isEmpty
+        ? status
+        : status.withAnsweredPings(_pingReplies.keys.toSet());
+  }
+
+  /// While the window is open, re-reads status every [openRefreshInterval],
+  /// and once right away when it opens. tailscaled does not report
+  /// handshakes, which decide whether a peer shows as reachable. With only
+  /// the tray up, nothing is polled.
+  void setWindowOpen(bool open) {
+    if (open == (_openRefresh != null)) return;
+    _openRefresh?.cancel();
+    _openRefresh = null;
+    if (!open) return;
+    refresh();
+    _openRefresh = Timer.periodic(openRefreshInterval, (_) => refresh());
+  }
+
+  /// Sends [file] with Taildrop to the device [nodeId].
+  Future<void> sendFile(
+    String nodeId,
+    File file, {
+    void Function(int sent, int total)? onProgress,
+  }) => _api.putFile(
+    nodeId,
+    file.uri.pathSegments.last,
+    file,
+    onProgress: onProgress,
+  );
+
   Future<void> _login() async {
     _awaitingLoginUrl = true;
     try {
@@ -160,12 +239,22 @@ class TailscaleController extends ChangeNotifier {
           if (!e.isForbidden) rethrow;
           canWrite = false;
         }
+        var fileTargets = const <String>{};
+        if (status.isRunning) {
+          try {
+            fileTargets = await _api.fileTargets();
+          } on Exception catch (e) {
+            // Taildrop may be off for this tailnet; the rest still works.
+            debugPrint('tailscale: no Taildrop targets: $e');
+          }
+        }
         if (_disposed) return;
-        _status = status;
+        _status = _withPingReplies(status);
         _prefs = prefs;
         _canWrite = canWrite;
         _profiles = profiles;
         _currentProfileId = currentId;
+        _fileTargets = fileTargets;
         // In case the bus event carrying the URL was missed.
         _onLoginUrl(status.authUrl);
         notifyListeners();
@@ -186,6 +275,20 @@ class TailscaleController extends ChangeNotifier {
     _bus = _api.watchIpnBus().listen(
       (event) {
         if (event['BrowseToURL'] case final String url) _onLoginUrl(url);
+        if (event['FilesWaiting'] != null) onFilesWaiting?.call();
+        // Absent means "no change"; an empty list means nothing is incoming.
+        if (event['IncomingFiles'] case final List<Object?> files) {
+          _incomingFiles = [
+            for (final f in files)
+              if (f is Map<String, Object?>) IncomingFile.fromJson(f),
+          ].where((f) => !f.finished).toList();
+          notifyListeners();
+        }
+        // Transfer progress arrives often and changes nothing else.
+        if (event.isNotEmpty &&
+            event.keys.every(_transferProgressKeys.contains)) {
+          return;
+        }
         refresh();
       },
       onError: _onBusLost,
@@ -198,9 +301,10 @@ class TailscaleController extends ChangeNotifier {
     if (_disposed) return;
     if (error != null) debugPrint('tailscale: IPN bus lost: $error');
     _bus = null;
-    if (_status != null || _prefs != null) {
+    if (_status != null || _prefs != null || _incomingFiles.isNotEmpty) {
       _status = null;
       _prefs = null;
+      _incomingFiles = const [];
       notifyListeners();
     }
     _reconnect = Timer(reconnectDelay, _watch);
@@ -210,10 +314,13 @@ class TailscaleController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _reconnect?.cancel();
+    _openRefresh?.cancel();
     _bus?.cancel();
     super.dispose();
   }
 }
+
+const _transferProgressKeys = {'IncomingFiles', 'OutgoingFiles'};
 
 void _ignoreUrl(String url) {}
 

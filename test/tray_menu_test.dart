@@ -118,6 +118,7 @@ void main() {
       '  [ ] server',
       '---',
       'Settings…',
+      'Open Tailscale',
       'Quit',
     ]);
     expect(commandOf<SetConnected>(menu, 'Connected').connected, isFalse);
@@ -145,7 +146,13 @@ void main() {
   test('stopped: a Connected checkbox that connects, no devices', () {
     final menu = buildTrayMenu(status: status(BackendState.stopped));
 
-    expect(describe(menu), ['[ ] Connected', '---', 'Settings…', 'Quit']);
+    expect(describe(menu), [
+      '[ ] Connected',
+      '---',
+      'Settings…',
+      'Open Tailscale',
+      'Quit',
+    ]);
     expect(commandOf<SetConnected>(menu, 'Connected').connected, isTrue);
   });
 
@@ -171,6 +178,28 @@ void main() {
       'Logged out (disabled)',
       '---',
       'Settings…',
+      'Open Tailscale',
+      'Quit',
+    ]);
+  });
+
+  test('files being received show their progress', () {
+    final menu = buildTrayMenu(
+      status: status(BackendState.stopped),
+      incomingFiles: const [
+        IncomingFile(name: 'photo.jpg', declaredSize: 200, received: 90),
+        IncomingFile(name: 'stream.bin', received: 2500000),
+      ],
+    );
+
+    expect(describe(menu), [
+      '[ ] Connected',
+      '---',
+      'Receiving photo.jpg… 45% (disabled)',
+      'Receiving stream.bin… 2.5 MB (disabled)',
+      '---',
+      'Settings…',
+      'Open Tailscale',
       'Quit',
     ]);
   });
@@ -180,6 +209,7 @@ void main() {
       'Tailscale is not running (disabled)',
       '---',
       'Settings…',
+      'Open Tailscale',
       'Quit',
     ]);
   });

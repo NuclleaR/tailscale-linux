@@ -18,7 +18,12 @@ Do not revisit these without the maintainer asking:
 - **State: plain `ChangeNotifier`**. No state-management packages.
 - **Linux only** (`--platforms=linux`).
 - **No new dependencies** without the maintainer's approval. This includes
-  dev dependencies and code generators.
+  dev dependencies and code generators. Approved so far: `tray_manager`,
+  `window_manager`, `desktop_drop` (drag and drop for Taildrop).
+- **Desktop tools run as processes, not packages**: `xdg-open`,
+  `notify-send`, `kdialog`/`zenity` (file dialog), `pkexec`.
+- **One window, two screens**: the main window and the settings window share
+  the single native window; `AppScreen` in `main.dart` picks which shows.
 
 ## Commands
 
@@ -46,6 +51,12 @@ and format the code with `dart format`.
   to a `TrayEntry` tree. Menu logic belongs here, not in the presenter.
 - `lib/tray/tray_presenter.dart`: renders `TrayEntry` trees to native menus.
   Rebuilds the whole menu on every state change.
+- `lib/main_window/`: the main window. `device_list.dart` is a pure function
+  (groups, search, sorting) with tests, like `buildTrayMenu`. Devices and exit
+  nodes show only while the backend is `Running`: in other states the status
+  still carries stale peers.
+- `lib/tailscale/taildrop_receiver.dart`: saves received files to the XDG
+  Downloads folder on `FilesWaiting` bus events and on start.
 - `lib/settings/`: the settings window. User actions go through
   `runAction` (`widgets.dart`), which shows a failure in a snack bar;
   destructive ones ask first with `confirm`.
@@ -81,6 +92,31 @@ and format the code with `dart format`.
 - Accounts: `logout` logs the current account out and deletes its profile.
   `DELETE profiles/<id>` only forgets the profile; the node stays registered.
   `PUT profiles/` switches to a new, empty profile.
+- A peer's `Online` means "connected to the coordination server". An iPhone
+  in the background is offline yet answers over the tunnel, so the UI shows
+  `Node.reachable`: `Online`, a WireGuard handshake within 3 minutes, or a
+  reply to this app's ping within 3 minutes. The app's pings are disco pings
+  and cause no handshake, so the controller remembers replies itself. The bus
+  does not report handshakes: status is re-read every 60 s while the window
+  is open (`AppLifecycleState` `resumed` or `inactive`) and once when it
+  opens. Closing the window hides it (`hidden`): then only the tray is up,
+  and nothing is polled. A running ping also stops on `hidden`.
+- `ping` reports a failed ping in `Err` with status 200, and waits for a
+  reply as long as the request is open: `LocalApiClient.ping` aborts it after
+  a timeout.
+- Taildrop: `file-targets` lists the devices files can go to. `file-put`
+  takes the escaped file name as a path segment. Received files wait in
+  tailscaled (`files/`, write access needed) until fetched and deleted.
+- The bus fields the app uses for receiving, `FilesWaiting` and
+  `IncomingFiles` (progress), are marked deprecated in tailscaled 1.104 in
+  favour of the `files/?waitsec=` long poll, which reports no progress. The
+  maintainer chose to keep them; if they disappear, receiving stops
+  triggering. tailscaled sends its last `IncomingFiles` for a file before
+  dropping it from the list, and nothing after, so a finished file must be
+  recognised (`Done`, or all bytes in) or cleared when the receiver saves
+  it; it never disappears from the bus on its own. Progress comes at most
+  once a second. Events carrying only `IncomingFiles`/`OutgoingFiles` do not
+  trigger a refresh: they arrive often during a transfer.
 - Login pages arrive on the bus as `BrowseToURL` (and in `status.AuthURL`).
   The controller opens one only after this app asked for a login, so logins
   started by the CLI or another client do not open the browser.
