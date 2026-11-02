@@ -54,26 +54,33 @@ class _MainWindowState extends State<MainWindow> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Container(
+                // A Material, not a coloured Container: the selected tile's
+                // colour is painted by its nearest Material, and would be
+                // hidden under a Container's colour.
+                SizedBox(
                   width: 200,
-                  color: theme.colorScheme.surfaceContainerLow,
-                  padding: const EdgeInsets.all(8),
-                  child: Column(
-                    children: [
-                      for (final section in MainSection.values)
-                        ListTile(
-                          dense: true,
-                          leading: Icon(section.icon),
-                          title: Text(section.label),
-                          selected: section == _section,
-                          selectedTileColor:
-                              theme.colorScheme.secondaryContainer,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          onTap: () => setState(() => _section = section),
-                        ),
-                    ],
+                  child: Material(
+                    color: theme.colorScheme.surfaceContainerLow,
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: Column(
+                        children: [
+                          for (final section in MainSection.values)
+                            ListTile(
+                              dense: true,
+                              leading: Icon(section.icon),
+                              title: Text(section.label),
+                              selected: section == _section,
+                              selectedTileColor:
+                                  theme.colorScheme.secondaryContainer,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              onTap: () => setState(() => _section = section),
+                            ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
                 const VerticalDivider(width: 1),

@@ -60,21 +60,28 @@ class _DevicesViewState extends State<DevicesView> {
                   Expanded(
                     child: groups.isEmpty
                         ? const Center(child: Text('No devices'))
-                        : ListView(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            children: [
-                              for (final group in groups) ...[
-                                _GroupTitle(group.title),
-                                for (final device in group.devices)
-                                  _DeviceTile(
-                                    device: device,
-                                    isSelf: identical(device, status.self),
-                                    selected: device.id == _selectedId,
-                                    onTap: () =>
-                                        setState(() => _selectedId = device.id),
-                                  ),
+                        // A tile's selected colour is painted by its nearest
+                        // Material. This one keeps it inside the list, so a
+                        // tile scrolled out does not show over the search.
+                        : Material(
+                            type: MaterialType.transparency,
+                            child: ListView(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              children: [
+                                for (final group in groups) ...[
+                                  _GroupTitle(group.title),
+                                  for (final device in group.devices)
+                                    _DeviceTile(
+                                      device: device,
+                                      isSelf: identical(device, status.self),
+                                      selected: device.id == _selectedId,
+                                      onTap: () => setState(
+                                        () => _selectedId = device.id,
+                                      ),
+                                    ),
+                                ],
                               ],
-                            ],
+                            ),
                           ),
                   ),
                 ],

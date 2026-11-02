@@ -4,6 +4,16 @@ All notable changes to Tailscale for Linux. Versions follow
 [Semantic Versioning](https://semver.org); a version with a suffix such as `-beta` is a
 pre-release. Each section below becomes the notes of its GitHub release.
 
+## [Unreleased]
+
+### Fixed
+
+- The selected device in the main window no longer shows over the search field and the
+  header when it is scrolled out of the list. The same fix applies to the account list
+  in Settings.
+- The selected section (Devices, Exit Nodes) in the main window's sidebar now has its
+  highlight; it was hidden under the sidebar's background.
+
 ## [0.1.0] - 2026-11-01
 
 First release.

@@ -43,33 +43,38 @@ class _AccountsPageState extends State<AccountsPage> {
               child: Column(
                 children: [
                   Expanded(
-                    child: ListView(
-                      padding: const EdgeInsets.all(8),
-                      children: [
-                        for (final p in profiles)
-                          ListTile(
-                            selected: p.id == selected?.id,
-                            selectedTileColor:
-                                theme.colorScheme.secondaryContainer,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
+                    // Keeps the selected tile's colour, which its nearest
+                    // Material paints, inside the list when it scrolls.
+                    child: Material(
+                      type: MaterialType.transparency,
+                      child: ListView(
+                        padding: const EdgeInsets.all(8),
+                        children: [
+                          for (final p in profiles)
+                            ListTile(
+                              selected: p.id == selected?.id,
+                              selectedTileColor:
+                                  theme.colorScheme.secondaryContainer,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              leading: UserAvatar(
+                                p.user,
+                                radius: 18,
+                                active: p.id == currentId && loggedIn,
+                              ),
+                              title: Text(
+                                p.user.loginName,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              subtitle: Text(
+                                p.tailnet,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              onTap: () => setState(() => _selectedId = p.id),
                             ),
-                            leading: UserAvatar(
-                              p.user,
-                              radius: 18,
-                              active: p.id == currentId && loggedIn,
-                            ),
-                            title: Text(
-                              p.user.loginName,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            subtitle: Text(
-                              p.tailnet,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            onTap: () => setState(() => _selectedId = p.id),
-                          ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                   Padding(
