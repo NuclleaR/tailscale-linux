@@ -114,6 +114,35 @@ class _SettingsPageState extends State<SettingsPage> {
                 ],
               ),
               _Section(
+                label: 'Login links',
+                children: [
+                  SegmentedButton<LoginLinkAction>(
+                    segments: const [
+                      ButtonSegment(
+                        value: LoginLinkAction.open,
+                        label: Text('Open in browser'),
+                      ),
+                      ButtonSegment(
+                        value: LoginLinkAction.copy,
+                        label: Text('Copy link'),
+                      ),
+                    ],
+                    selected: {appSettings.loginLinks},
+                    showSelectedIcon: false,
+                    onSelectionChanged: (selection) => runAction(
+                      context,
+                      () => appSettings.setLoginLinks(selection.single),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  const _Description(
+                    'The login page for Add Account and Renew. Copy '
+                    'puts its link on the clipboard, to paste into the '
+                    'browser you want.',
+                  ),
+                ],
+              ),
+              _Section(
                 label: 'Tailnet Lock',
                 children: [
                   Row(
@@ -135,6 +164,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         onPressed: () => openUrl(_tailnetLockAdminUrl),
                         child: const Text('Manage…'),
                       ),
+                      const CopyLinkButton(_tailnetLockAdminUrl),
                     ],
                   ),
                 ],

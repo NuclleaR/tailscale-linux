@@ -57,11 +57,14 @@ void main() {
     final settings = AppSettings(file);
     await settings.load();
     expect(settings.trayIcon, TrayIconColor.white);
+    expect(settings.loginLinks, LoginLinkAction.open);
 
     await settings.setTrayIcon(TrayIconColor.black);
+    await settings.setLoginLinks(LoginLinkAction.copy);
     final reloaded = AppSettings(file);
     await reloaded.load();
     expect(reloaded.trayIcon, TrayIconColor.black);
+    expect(reloaded.loginLinks, LoginLinkAction.copy);
 
     await reloaded.setPinned('nA', true);
     await reloaded.setPinned('nB', true);
@@ -70,11 +73,18 @@ void main() {
     await pins.load();
     expect(pins.pinnedDevices, {'nB'});
     expect(pins.trayIcon, TrayIconColor.black);
+    expect(pins.loginLinks, LoginLinkAction.copy);
+
+    await file.writeAsString('{"loginLinks": "teleport"}');
+    final unknown = AppSettings(file);
+    await unknown.load();
+    expect(unknown.loginLinks, LoginLinkAction.open);
 
     await file.writeAsString('not json');
     final broken = AppSettings(file);
     await broken.load();
     expect(broken.trayIcon, TrayIconColor.white);
+    expect(broken.loginLinks, LoginLinkAction.open);
   });
 
   test('picked files: one path per line', () {

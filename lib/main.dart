@@ -47,9 +47,29 @@ Future<void> main() async {
       );
     },
   );
+  // A login page's link is not known until the login starts, so there is no
+  // Copy button for it: the setting picks.
+  void showLoginPage(String url) {
+    switch (appSettings.loginLinks) {
+      case LoginLinkAction.open:
+        openUrl(url);
+      case LoginLinkAction.copy:
+        Clipboard.setData(ClipboardData(text: url))
+            .then(
+              (_) => notify(
+                'Login link copied',
+                body: 'Paste it into your browser to log in.',
+              ),
+            )
+            .catchError((Object e) {
+              debugPrint('cannot copy the login link: $e');
+            });
+    }
+  }
+
   tailscale = TailscaleController(
     api,
-    openUrl: openUrl,
+    openUrl: showLoginPage,
     restoreOperator: setOperatorAsRoot,
     onFilesWaiting: taildrop.receiveWaiting,
   );

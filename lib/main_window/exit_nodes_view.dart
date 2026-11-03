@@ -79,14 +79,26 @@ class _NoExitNodes extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           const Text('No available exit nodes.'),
-          TextButton(
-            onPressed: () => openUrl(_exitNodesHelpUrl),
-            child: const Text('Learn how to configure an exit node.'),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextButton(
+                onPressed: () => openUrl(_exitNodesHelpUrl),
+                child: const Text('Learn how to configure an exit node.'),
+              ),
+              const CopyLinkButton(_exitNodesHelpUrl),
+            ],
           ),
           const SizedBox(height: 8),
-          FilledButton(
-            onPressed: () => openUrl(_adminMachinesUrl),
-            child: const Text('Open in Admin Console'),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              FilledButton(
+                onPressed: () => openUrl(_adminMachinesUrl),
+                child: const Text('Open in Admin Console'),
+              ),
+              const CopyLinkButton(_adminMachinesUrl),
+            ],
           ),
         ],
       ),

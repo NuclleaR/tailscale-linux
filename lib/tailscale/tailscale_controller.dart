@@ -26,7 +26,7 @@ class TailscaleController extends ChangeNotifier {
   /// How long to wait before re-subscribing after the bus connection drops.
   final Duration reconnectDelay;
 
-  /// Opens a login page in the browser.
+  /// Shows a login page: opens it in the browser or copies its link.
   final void Function(String url) _openUrl;
 
   /// Makes `user` the operator of the current profile, as root.

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../tailscale/local_api.dart';
 import '../tailscale/status.dart';
@@ -48,6 +49,27 @@ Future<bool> confirm(
       ),
     ) ??
     false;
+
+/// Copies [url], to open it in a browser other than the default one. Goes
+/// next to the button that opens it.
+class CopyLinkButton extends StatelessWidget {
+  const CopyLinkButton(this.url, {super.key});
+
+  final String url;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      tooltip: 'Copy link',
+      icon: const Icon(Icons.copy, size: 18),
+      onPressed: () async {
+        final messenger = ScaffoldMessenger.of(context);
+        await Clipboard.setData(ClipboardData(text: url));
+        messenger.showSnackBar(const SnackBar(content: Text('Link copied')));
+      },
+    );
+  }
+}
 
 String userName(UserProfile user) =>
     user.displayName.isNotEmpty ? user.displayName : user.loginName;

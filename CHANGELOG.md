@@ -4,6 +4,16 @@ All notable changes to Tailscale for Linux. Versions follow
 [Semantic Versioning](https://semver.org); a version with a suffix such as `-beta` is a
 pre-release. Each section below becomes the notes of its GitHub release.
 
+## [Unreleased]
+
+### Added
+
+- A Copy link button next to each button that opens a web page (Admin Console, help
+  pages, Tailnet Lock, Report an Issue, Release Notes), to open it in a browser other
+  than the default one.
+- Settings → Login links: the login page for Add Account and Renew can be copied to the
+  clipboard, with a notification, instead of opening in the default browser.
+
 ## [0.1.1] - 2026-11-02
 
 ### Fixed

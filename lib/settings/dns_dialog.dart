@@ -85,10 +85,16 @@ class _DnsDialogState extends State<DnsDialog> {
       ),
       actionsAlignment: MainAxisAlignment.spaceBetween,
       actions: [
-        IconButton(
-          tooltip: 'DNS in Tailscale',
-          icon: const Icon(Icons.help_outline),
-          onPressed: () => openUrl(_dnsHelpUrl),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              tooltip: 'DNS in Tailscale',
+              icon: const Icon(Icons.help_outline),
+              onPressed: () => openUrl(_dnsHelpUrl),
+            ),
+            const CopyLinkButton(_dnsHelpUrl),
+          ],
         ),
         FilledButton(
           onPressed: () => Navigator.pop(context),

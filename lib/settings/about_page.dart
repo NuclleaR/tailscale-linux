@@ -4,6 +4,7 @@ import '../platform/desktop.dart';
 import '../tailscale/status.dart';
 import '../tailscale/tailscale_controller.dart';
 import '../update/update_controller.dart';
+import 'widgets.dart';
 
 const _privacyPolicyUrl = 'https://tailscale.com/privacy-policy';
 const _termsUrl = 'https://tailscale.com/terms';
@@ -75,9 +76,15 @@ class _AboutPageState extends State<AboutPage> {
                   const _Link('Privacy Policy', _privacyPolicyUrl),
                   const _Link('Terms of Service', _termsUrl),
                   const SizedBox(height: 12),
-                  OutlinedButton(
-                    onPressed: () => openUrl(_issuesUrl),
-                    child: const Text('Report an Issue…'),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      OutlinedButton(
+                        onPressed: () => openUrl(_issuesUrl),
+                        child: const Text('Report an Issue…'),
+                      ),
+                      const CopyLinkButton(_issuesUrl),
+                    ],
                   ),
                 ],
               ),
@@ -170,9 +177,15 @@ class _Updates extends StatelessWidget {
               ),
             ?action,
             if (release != null && updates.stage == UpdateStage.available)
-              TextButton(
-                onPressed: () => openUrl(release.pageUrl.toString()),
-                child: const Text('Release Notes'),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextButton(
+                    onPressed: () => openUrl(release.pageUrl.toString()),
+                    child: const Text('Release Notes'),
+                  ),
+                  CopyLinkButton(release.pageUrl.toString()),
+                ],
               ),
             if (canCheck)
               OutlinedButton(

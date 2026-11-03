@@ -23,6 +23,24 @@ enum TrayIconColor {
       values.firstWhere((c) => c.wireName == value, orElse: () => white);
 }
 
+/// What to do with a login page tailscaled asks the app to show (Add Account,
+/// Renew). Its link is not known until the login starts, so the setting
+/// decides.
+enum LoginLinkAction {
+  /// Open it in the default browser.
+  open('open'),
+
+  /// Copy it to the clipboard, to paste into the browser of one's choice.
+  copy('copy');
+
+  const LoginLinkAction(this.wireName);
+
+  final String wireName;
+
+  static LoginLinkAction parse(Object? value) =>
+      values.firstWhere((a) => a.wireName == value, orElse: () => open);
+}
+
 /// The app's own settings, kept in a JSON file. Tailscale's settings live in
 /// tailscaled, not here.
 class AppSettings extends ChangeNotifier {
@@ -32,6 +50,9 @@ class AppSettings extends ChangeNotifier {
 
   TrayIconColor get trayIcon => _trayIcon;
   TrayIconColor _trayIcon = TrayIconColor.white;
+
+  LoginLinkAction get loginLinks => _loginLinks;
+  LoginLinkAction _loginLinks = LoginLinkAction.open;
 
   /// Stable node IDs of the devices pinned to the top of the device list.
   Set<String> get pinnedDevices => Set.unmodifiable(_pinnedDevices);
@@ -43,6 +64,7 @@ class AppSettings extends ChangeNotifier {
       final json = jsonDecode(await file.readAsString());
       if (json is Map<String, Object?>) {
         _trayIcon = TrayIconColor.parse(json['trayIcon']);
+        _loginLinks = LoginLinkAction.parse(json['loginLinks']);
         _pinnedDevices = {
           for (final id in json['pinnedDevices'] as List<Object?>? ?? const [])
             if (id is String) id,
@@ -63,6 +85,12 @@ class AppSettings extends ChangeNotifier {
     await _save();
   }
 
+  Future<void> setLoginLinks(LoginLinkAction action) async {
+    _loginLinks = action;
+    notifyListeners();
+    await _save();
+  }
+
   Future<void> setPinned(String deviceId, bool pinned) async {
     if (pinned) {
       _pinnedDevices.add(deviceId);
@@ -78,6 +106,7 @@ class AppSettings extends ChangeNotifier {
     await file.writeAsString(
       const JsonEncoder.withIndent('  ').convert({
         'trayIcon': _trayIcon.wireName,
+        'loginLinks': _loginLinks.wireName,
         'pinnedDevices': _pinnedDevices.toList()..sort(),
       }),
     );
