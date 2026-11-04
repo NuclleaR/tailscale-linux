@@ -136,10 +136,18 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                   const SizedBox(height: 6),
                   const _Description(
-                    'The login page for Add Account and Renew. Copy '
+                    'The login page for Add Account, Log In and Renew. Copy '
                     'puts its link on the clipboard, to paste into the '
                     'browser you want.',
                   ),
+                  if (wlCopyMissing()) ...[
+                    const SizedBox(height: 12),
+                    const _Recommendation(
+                      'Install wl-clipboard (wl-copy): on Wayland, copying '
+                      'from the tray needs it. Without it, a login link or IP '
+                      'copied from the tray opens in this window instead.',
+                    ),
+                  ],
                 ],
               ),
               _Section(
@@ -244,6 +252,33 @@ class _Check extends StatelessWidget {
       controlAffinity: ListTileControlAffinity.leading,
       contentPadding: EdgeInsets.zero,
       dense: true,
+    );
+  }
+}
+
+/// Advice to install something, with an info icon.
+class _Recommendation extends StatelessWidget {
+  const _Recommendation(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(Icons.info_outline, size: 16, color: theme.colorScheme.primary),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            text,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.primary,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

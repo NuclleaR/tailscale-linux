@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 
 /// The user's config directory: `$XDG_CONFIG_HOME`, or `~/.config` when it
 /// is unset.
@@ -37,6 +39,55 @@ Future<void> openUrl(String url) async {
   } on ProcessException catch (e) {
     debugPrint('cannot open $url: $e');
   }
+}
+
+/// Puts [text] on the clipboard. False when it cannot be done from here.
+///
+/// On Wayland a window without keyboard focus may not set the clipboard (KWin
+/// ignores it), and the app's window has none after a click in the tray. So
+/// on Wayland `wl-copy` sets it, and without `wl-copy` only a focused window
+/// can. [environment] and [wlCopy] are for tests.
+Future<bool> copyText(
+  String text, {
+  required bool windowFocused,
+  Map<String, String>? environment,
+  String wlCopy = 'wl-copy',
+}) async {
+  final env = environment ?? Platform.environment;
+  if ((env['WAYLAND_DISPLAY'] ?? '').isNotEmpty) {
+    try {
+      final process = await Process.start(wlCopy, ['--', text]);
+      // wl-copy leaves a child behind that serves the clipboard until it
+      // changes, and the child may hold these open: never wait on them.
+      final errors = StringBuffer();
+      process.stdout.listen(null);
+      process.stderr.transform(utf8.decoder).listen(errors.write);
+      final code = await process.exitCode;
+      if (code == 0) return true;
+      debugPrint('cannot copy: $wlCopy exited with $code: $errors');
+    } on ProcessException catch (e) {
+      debugPrint('cannot copy with wl-copy: $e');
+    }
+    if (!windowFocused) return false;
+  }
+  await Clipboard.setData(ClipboardData(text: text));
+  return true;
+}
+
+/// True on Wayland when `wl-copy` is not on the `PATH`: copying from the tray
+/// then needs a click in the window (see [copyText]).
+bool wlCopyMissing([Map<String, String>? environment]) {
+  final env = environment ?? Platform.environment;
+  if ((env['WAYLAND_DISPLAY'] ?? '').isEmpty) return false;
+  for (final dir in (env['PATH'] ?? '').split(':')) {
+    if (dir.isEmpty) continue;
+    final stat = FileStat.statSync('$dir/wl-copy');
+    // Any execute bit.
+    if (stat.type == FileSystemEntityType.file && stat.mode & 0x49 != 0) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /// Shows a desktop notification through `notify-send`.

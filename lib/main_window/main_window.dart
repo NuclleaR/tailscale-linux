@@ -239,32 +239,31 @@ class _IncomingProgress extends StatelessWidget {
   }
 }
 
-/// The current account's avatar; opens a menu to switch or add accounts.
+/// The current account's avatar; opens a menu to switch or add accounts, and
+/// to renew the current one's key.
 class _AccountMenu extends StatelessWidget {
   const _AccountMenu({required this.tailscale});
 
   final TailscaleController tailscale;
-
-  static const _addAccount = '';
 
   @override
   Widget build(BuildContext context) {
     final current = tailscale.profiles
         .where((p) => p.id == tailscale.currentProfileId)
         .firstOrNull;
-    return PopupMenuButton<String>(
+    // Null when the key never expires: there is nothing to renew.
+    final keyExpiry = current == null
+        ? null
+        : tailscale.status?.self?.keyExpiry;
+    final theme = Theme.of(context);
+    return PopupMenuButton<Future<void> Function()>(
       tooltip: 'Accounts',
       enabled: tailscale.status != null,
-      onSelected: (id) => runAction(
-        context,
-        id == _addAccount
-            ? tailscale.addAccount
-            : () => tailscale.switchProfile(id),
-      ),
+      onSelected: (action) => runAction(context, action),
       itemBuilder: (context) => [
         for (final p in tailscale.profiles)
           CheckedPopupMenuItem(
-            value: p.id,
+            value: () => tailscale.switchProfile(p.id),
             checked: p.id == current?.id,
             enabled: p.id != current?.id,
             child: ListTile(
@@ -274,7 +273,26 @@ class _AccountMenu extends StatelessWidget {
             ),
           ),
         if (tailscale.profiles.isNotEmpty) const PopupMenuDivider(),
-        const PopupMenuItem(value: _addAccount, child: Text('Add Account…')),
+        if (keyExpiry != null) ...[
+          PopupMenuItem(
+            value: tailscale.renew,
+            child: Row(
+              children: [
+                const Text('Renew…'),
+                const SizedBox(width: 16),
+                Text(
+                  expiryLabel(keyExpiry, DateTime.now()),
+                  style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ),
+          const PopupMenuDivider(),
+        ],
+        PopupMenuItem(
+          value: tailscale.addAccount,
+          child: const Text('Add Account…'),
+        ),
       ],
       child: Padding(
         padding: const EdgeInsets.all(4),

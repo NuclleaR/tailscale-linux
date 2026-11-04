@@ -4,6 +4,27 @@ All notable changes to Tailscale for Linux. Versions follow
 [Semantic Versioning](https://semver.org); a version with a suffix such as `-beta` is a
 pre-release. Each section below becomes the notes of its GitHub release.
 
+## [Unreleased]
+
+### Added
+
+- Renew in the account menu of the main window, with when the key expires ("Expires
+  in 18 hours", "Expired"), like the macOS app.
+- Renew in the tray menu when the session has ended but the account is still on this
+  computer. Its login page opens or is copied, as Settings → Login links says.
+- Settings → Settings recommends installing `wl-clipboard` on Wayland when `wl-copy`
+  is missing.
+
+### Fixed
+
+- On Wayland, copying from the tray (a device's IP, a login link) left the clipboard
+  empty: the compositor ignores a window without focus. The app now copies with
+  `wl-copy` (`wl-clipboard`), and a notification says what was copied. Without
+  `wl-copy`, the IP or login link shows in the window, with a Copy button.
+- Settings → Accounts: a logged-out current account (for example after its key
+  expired) has a Log In button. Before, only a disabled Log Out button showed, and
+  there was no way to log back in from the app.
+
 ## [0.2.0] - 2026-11-03
 
 ### Added

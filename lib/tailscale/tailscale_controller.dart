@@ -127,6 +127,10 @@ class TailscaleController extends ChangeNotifier {
     await refresh();
   }
 
+  /// Opens the login page of the current account when it is logged out, for
+  /// example after its node key expired.
+  Future<void> login() => _login();
+
   /// Logs the current account in again, which renews its node key.
   Future<void> renew() => _login();
 

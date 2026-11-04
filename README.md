@@ -57,6 +57,9 @@ This is an unofficial project and is not affiliated with Tailscale Inc.
 
   Without it the app can still show status, but connect, exit node and
   account switching are refused by `tailscaled`.
+- On Wayland, `wl-copy` (the `wl-clipboard` package) to copy from the tray:
+  a device's IP, or a login link when Settings → Login links is Copy. Without
+  it, the IP or link shows in the window, with a Copy button.
 
 ## Install
 

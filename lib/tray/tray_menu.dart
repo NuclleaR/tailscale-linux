@@ -26,6 +26,11 @@ final class SwitchProfile extends TrayCommand {
   final String profileId;
 }
 
+/// Logs the current account in again; its login page opens or is copied.
+final class Renew extends TrayCommand {
+  const Renew();
+}
+
 final class OpenSettings extends TrayCommand {
   const OpenSettings();
 }
@@ -87,8 +92,14 @@ List<TrayEntry> buildTrayMenu({
     return const [TrayItem('Tailscale is not running'), ...footer];
   }
 
+  final hasCurrent = profiles.any((p) => p.id == currentProfileId);
   return [
     _connectionItem(status.backendState),
+    // The session ended, for example when the key expired, but the account
+    // is still here. After a logout the current profile is a new, unlisted
+    // one: there is nothing to renew.
+    if (status.backendState == BackendState.needsLogin && hasCurrent)
+      const TrayItem('Renew…', command: Renew()),
     if (profiles.isNotEmpty) _accountMenu(status, profiles, currentProfileId),
     if (status.isRunning) ...[
       const TraySeparator(),

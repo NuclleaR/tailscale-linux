@@ -24,7 +24,7 @@ enum TrayIconColor {
 }
 
 /// What to do with a login page tailscaled asks the app to show (Add Account,
-/// Renew). Its link is not known until the login starts, so the setting
+/// Log In, Renew). Its link is not known until the login starts, so the setting
 /// decides.
 enum LoginLinkAction {
   /// Open it in the default browser.

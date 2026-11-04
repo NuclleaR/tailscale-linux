@@ -21,7 +21,8 @@ Do not revisit these without the maintainer asking:
   dev dependencies and code generators. Approved so far: `tray_manager`,
   `window_manager`, `desktop_drop` (drag and drop for Taildrop).
 - **Desktop tools run as processes, not packages**: `xdg-open`,
-  `notify-send`, `kdialog`/`zenity` (file dialog), `pkexec`.
+  `notify-send`, `kdialog`/`zenity` (file dialog), `pkexec`, `wl-copy`
+  (clipboard on Wayland, optional).
 - **One window, two screens**: the main window and the settings window share
   the single native window; `AppScreen` in `main.dart` picks which shows.
 - **Releases follow mp3directcutlinux** (the maintainer's other app): a `v*`
@@ -152,6 +153,13 @@ A user-visible change gets a line in `CHANGELOG.md` under the next version.
   delivered on Linux.
 - Dispose a replaced menu later (`Timer.run`), because its item's click
   callback may be the code that is running at that moment.
+- On Wayland a window without keyboard focus cannot set the clipboard: KWin
+  ignores it, and Flutter's `Clipboard.setData` still succeeds. After a tray
+  click the app's window has no focus. Copies that can start from the tray go
+  through `copyText` (`lib/platform/desktop.dart`), which uses `wl-copy` and
+  reports when it could not copy; the text is then shown in the window with
+  a Copy button (`showCopyDialog`).
+  Copy buttons inside the window can use `Clipboard` directly.
 - Some platforms tick a checkbox item on click by themselves. The presenter
   resets the state, and the menu changes only when the real state changes.
 

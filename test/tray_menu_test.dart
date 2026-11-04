@@ -162,6 +162,37 @@ void main() {
     expect(describe(menu).first, 'Logged out (disabled)');
   });
 
+  test('session ended, account still here: Renew under the state', () {
+    final menu = buildTrayMenu(
+      status: status(BackendState.needsLogin),
+      profiles: profiles,
+      currentProfileId: 'a',
+    );
+
+    expect(describe(menu), [
+      'Logged out (disabled)',
+      'Renew…',
+      'Me (example.com) >',
+      '  [x] Me (example.com) (disabled)',
+      '  [ ] me@home.net (home.net)',
+      '---',
+      'Settings…',
+      'Open Tailscale',
+      'Quit',
+    ]);
+    expect(commandOf<TrayCommand>(menu, 'Renew…'), isA<Renew>());
+  });
+
+  test('after a logout there is no Renew: the new profile is not listed', () {
+    final menu = buildTrayMenu(
+      status: status(BackendState.needsLogin),
+      profiles: profiles,
+      currentProfileId: '',
+    );
+
+    expect(describe(menu), isNot(contains('Renew…')));
+  });
+
   test('logged out: nothing of the previous account shows', () {
     // What tailscaled 1.104 reports after a logout: this host, and peers the
     // engine still remembers, with no names, IPs or users.

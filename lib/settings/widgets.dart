@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../platform/desktop.dart';
 import '../tailscale/local_api.dart';
 import '../tailscale/status.dart';
 
@@ -50,6 +51,62 @@ Future<bool> confirm(
     ) ??
     false;
 
+/// Shows [text] with a Copy button, for when it could not be copied from the
+/// tray: there, on Wayland, only `wl-copy` can, and a click in the window
+/// can. [openable] adds an Open button, for a link. [copied] is the message
+/// once copied.
+Future<void> showCopyDialog(
+  BuildContext context, {
+  required String title,
+  required String message,
+  required String text,
+  required String copied,
+  bool openable = false,
+}) => showDialog<void>(
+  context: context,
+  builder: (context) => AlertDialog(
+    title: Text(title),
+    content: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(message),
+        const SizedBox(height: 12),
+        SelectableText(text),
+        const SizedBox(height: 12),
+        Text(
+          'Install wl-clipboard (wl-copy) to copy from the tray directly.',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      ],
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Close'),
+      ),
+      if (openable)
+        TextButton(
+          onPressed: () {
+            openUrl(text);
+            Navigator.pop(context);
+          },
+          child: const Text('Open'),
+        ),
+      FilledButton(
+        onPressed: () async {
+          final messenger = ScaffoldMessenger.of(context);
+          final navigator = Navigator.of(context);
+          await Clipboard.setData(ClipboardData(text: text));
+          navigator.pop();
+          messenger.showSnackBar(SnackBar(content: Text(copied)));
+        },
+        child: const Text('Copy'),
+      ),
+    ],
+  ),
+);
+
 /// Copies [url], to open it in a browser other than the default one. Goes
 /// next to the button that opens it.
 class CopyLinkButton extends StatelessWidget {
@@ -69,6 +126,18 @@ class CopyLinkButton extends StatelessWidget {
       },
     );
   }
+}
+
+/// When a key that expires at [expiry] does, as the macOS app puts it:
+/// "Expires in 18 hours", or "Expired" once it has.
+String expiryLabel(DateTime expiry, DateTime now) {
+  final left = expiry.difference(now);
+  if (left <= Duration.zero) return 'Expired';
+  String expiresIn(int n, String unit) =>
+      'Expires in $n $unit${n == 1 ? '' : 's'}';
+  if (left.inDays >= 1) return expiresIn(left.inDays, 'day');
+  if (left.inHours >= 1) return expiresIn(left.inHours, 'hour');
+  return expiresIn(left.inMinutes < 1 ? 1 : left.inMinutes, 'minute');
 }
 
 String userName(UserProfile user) =>

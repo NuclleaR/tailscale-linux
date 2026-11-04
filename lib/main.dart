@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import 'access/access_controller.dart';
 import 'access/access_page.dart';
@@ -11,6 +10,7 @@ import 'platform/autostart.dart';
 import 'platform/desktop.dart';
 import 'settings/app_settings.dart';
 import 'settings/settings_window.dart';
+import 'settings/widgets.dart';
 import 'tailscale/local_api.dart';
 import 'tailscale/operator.dart';
 import 'tailscale/taildrop_receiver.dart';
@@ -47,6 +47,46 @@ Future<void> main() async {
       );
     },
   );
+  final window = AppWindow();
+  final navigatorKey = GlobalKey<NavigatorState>();
+  // Whether the window has keyboard focus. Without it, Wayland may refuse
+  // the app the clipboard (see copyText).
+  var windowFocused = false;
+
+  // For text that could not be copied (Wayland without wl-copy, and no
+  // focus): shows it in the window, where a click on Copy can copy it.
+  Future<void> showInWindow(
+    Future<void> Function(BuildContext context) dialog,
+  ) async {
+    window.show();
+    final context = navigatorKey.currentContext;
+    if (context == null || !context.mounted) {
+      debugPrint('cannot show a dialog: no window');
+      return;
+    }
+    await dialog(context);
+  }
+
+  Future<void> copyLoginLink(String url) async {
+    if (await copyText(url, windowFocused: windowFocused)) {
+      await notify(
+        'Login link copied',
+        body: 'Paste it into your browser to log in.',
+      );
+      return;
+    }
+    await showInWindow(
+      (context) => showCopyDialog(
+        context,
+        title: 'Log in to Tailscale',
+        message: 'Open this link in a browser to log in:',
+        text: url,
+        copied: 'Login link copied',
+        openable: true,
+      ),
+    );
+  }
+
   // A login page's link is not known until the login starts, so there is no
   // Copy button for it: the setting picks.
   void showLoginPage(String url) {
@@ -54,16 +94,9 @@ Future<void> main() async {
       case LoginLinkAction.open:
         openUrl(url);
       case LoginLinkAction.copy:
-        Clipboard.setData(ClipboardData(text: url))
-            .then(
-              (_) => notify(
-                'Login link copied',
-                body: 'Paste it into your browser to log in.',
-              ),
-            )
-            .catchError((Object e) {
-              debugPrint('cannot copy the login link: $e');
-            });
+        copyLoginLink(url).catchError((Object e) {
+          debugPrint('cannot copy the login link: $e');
+        });
     }
   }
 
@@ -73,7 +106,6 @@ Future<void> main() async {
     restoreOperator: setOperatorAsRoot,
     onFilesWaiting: taildrop.receiveWaiting,
   );
-  final window = AppWindow();
   final screen = ValueNotifier(AppScreen.main);
 
   void showScreen(AppScreen s) {
@@ -86,6 +118,7 @@ Future<void> main() async {
   AppLifecycleListener(
     onStateChange: (state) {
       debugPrint('window: $state');
+      windowFocused = state == AppLifecycleState.resumed;
       tailscale.setWindowOpen(
         state == AppLifecycleState.resumed ||
             state == AppLifecycleState.inactive,
@@ -116,8 +149,22 @@ Future<void> main() async {
           await tailscale.setExitNode(nodeId);
         case SwitchProfile(:final profileId):
           await tailscale.switchProfile(profileId);
+        case Renew():
+          await tailscale.renew();
         case CopyText(:final text):
-          await Clipboard.setData(ClipboardData(text: text));
+          if (await copyText(text, windowFocused: windowFocused)) {
+            await notify('Copied $text');
+          } else {
+            await showInWindow(
+              (context) => showCopyDialog(
+                context,
+                title: 'Copy to Clipboard',
+                message: 'Copy it from here:',
+                text: text,
+                copied: 'Copied $text',
+              ),
+            );
+          }
         case OpenSettings():
           showScreen(AppScreen.settings);
         case OpenMainWindow():
@@ -183,6 +230,7 @@ Future<void> main() async {
         updater: const GitHubUpdater(),
       ),
       screen: screen,
+      navigatorKey: navigatorKey,
     ),
   );
 }
@@ -199,6 +247,7 @@ class TailscaleApp extends StatelessWidget {
     required this.autostart,
     required this.updates,
     required this.screen,
+    required this.navigatorKey,
   });
 
   final AccessController access;
@@ -208,9 +257,13 @@ class TailscaleApp extends StatelessWidget {
   final UpdateController updates;
   final ValueNotifier<AppScreen> screen;
 
+  /// For dialogs shown from outside the widget tree, such as a login link.
+  final GlobalKey<NavigatorState> navigatorKey;
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: navigatorKey,
       title: 'Tailscale',
       theme: ThemeData(colorSchemeSeed: Colors.blue),
       darkTheme: ThemeData(

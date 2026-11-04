@@ -165,12 +165,17 @@ class _AccountDetails extends StatelessWidget {
                               ? 'Logged In'
                               : 'Logged Out',
                         ),
-                        isCurrent
+                        isCurrent && loggedIn
                             ? OutlinedButton(
-                                onPressed: loggedIn
-                                    ? () => _logOut(context)
-                                    : null,
+                                onPressed: () => _logOut(context),
                                 child: const Text('Log Out…'),
+                              )
+                            : isCurrent
+                            ? OutlinedButton(
+                                onPressed: tailscale.status == null
+                                    ? null
+                                    : () => runAction(context, tailscale.login),
+                                child: const Text('Log In…'),
                               )
                             : OutlinedButton(
                                 onPressed: () => runAction(
