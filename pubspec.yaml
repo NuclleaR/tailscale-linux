@@ -4,7 +4,7 @@ publish_to: 'none'
 
 # The release tag is v<version>; CHANGELOG.md needs a section for it. No build number:
 # the release workflow compares this line with the tag.
-version: 0.2.0
+version: 0.3.0
 
 environment:
   sdk: ^3.13.7
