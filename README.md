@@ -10,6 +10,8 @@ This is an unofficial project and is not affiliated with Tailscale Inc.
 - **Tray icon** that shows whether Tailscale is connected.
 - **Tray menu**, laid out like the macOS menu bar app:
   - **Connected**: connect or disconnect.
+  - **Renew Session…**: shown after the key expired, under when it did
+    ("Expired 1 day ago"). Logs the account in again.
   - **Account**: the current account, with a submenu to switch between
     accounts that `tailscaled` knows about.
   - **This Device**: name and Tailscale IP. Click to copy the IP.

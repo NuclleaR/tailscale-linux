@@ -4,6 +4,15 @@ All notable changes to Tailscale for Linux. Versions follow
 [Semantic Versioning](https://semver.org); a version with a suffix such as `-beta` is a
 pre-release. Each section below becomes the notes of its GitHub release.
 
+## [Unreleased]
+
+### Changed
+
+- The tray menu after the key expired reads like the macOS app's: "Needs
+  Authentication", when the key expired ("Expired 1 day ago") and Renew Session…
+  instead of "Logged out" and Renew….
+- The tray menu has a separator above the account and above Quit, like the macOS app.
+
 ## [0.3.0] - 2026-11-04
 
 ### Added

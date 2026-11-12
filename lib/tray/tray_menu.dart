@@ -1,3 +1,4 @@
+import '../settings/widgets.dart' show expiredLabel;
 import '../tailscale/status.dart';
 
 /// What clicking a tray menu item does.
@@ -75,9 +76,11 @@ final class TraySeparator extends TrayEntry {
 
 /// The tray menu for the given state, laid out like the macOS app's.
 ///
-/// [status] is null while tailscaled cannot be reached.
+/// [status] is null while tailscaled cannot be reached. [now] dates the
+/// key expiry ("Expired 1 day ago").
 List<TrayEntry> buildTrayMenu({
   required TailscaleStatus? status,
+  required DateTime now,
   List<LoginProfile> profiles = const [],
   String? currentProfileId,
   List<IncomingFile> incomingFiles = const [],
@@ -86,21 +89,34 @@ List<TrayEntry> buildTrayMenu({
     TraySeparator(),
     TrayItem('Settings…', command: OpenSettings()),
     TrayItem('Open Tailscale', command: OpenMainWindow()),
+    TraySeparator(),
     TrayItem('Quit', command: Quit()),
   ];
   if (status == null) {
     return const [TrayItem('Tailscale is not running'), ...footer];
   }
 
-  final hasCurrent = profiles.any((p) => p.id == currentProfileId);
+  // The session ended, for example when the key expired, but the account
+  // is still here. After a logout the current profile is a new, unlisted
+  // one: there is nothing to renew.
+  final sessionEnded =
+      status.backendState == BackendState.needsLogin &&
+      profiles.any((p) => p.id == currentProfileId);
+  final keyExpiry = status.self?.keyExpiry;
+  final expired = sessionEnded && keyExpiry != null
+      ? expiredLabel(keyExpiry, now)
+      : null;
   return [
-    _connectionItem(status.backendState),
-    // The session ended, for example when the key expired, but the account
-    // is still here. After a logout the current profile is a new, unlisted
-    // one: there is nothing to renew.
-    if (status.backendState == BackendState.needsLogin && hasCurrent)
-      const TrayItem('Renew…', command: Renew()),
-    if (profiles.isNotEmpty) _accountMenu(status, profiles, currentProfileId),
+    if (sessionEnded) ...[
+      const TrayItem('Needs Authentication'),
+      if (expired != null) TrayItem(expired),
+      const TrayItem('Renew Session…', command: Renew()),
+    ] else
+      _connectionItem(status.backendState),
+    if (profiles.isNotEmpty) ...[
+      const TraySeparator(),
+      _accountMenu(status, profiles, currentProfileId),
+    ],
     if (status.isRunning) ...[
       const TraySeparator(),
       ?_thisDeviceItem(status.self),

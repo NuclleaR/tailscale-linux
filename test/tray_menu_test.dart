@@ -4,6 +4,7 @@ import 'package:tailscale_linux/tray/tray_menu.dart';
 
 const me = 1;
 const colleague = 2;
+final now = DateTime.utc(2026, 11, 12, 12);
 
 Node node(
   String name, {
@@ -11,6 +12,7 @@ Node node(
   bool online = true,
   bool exitOption = false,
   bool isExit = false,
+  DateTime? keyExpiry,
 }) => Node(
   id: 'id-$name',
   hostName: name,
@@ -20,15 +22,19 @@ Node node(
   userId: user,
   exitNodeOption: exitOption,
   isExitNode: isExit,
+  keyExpiry: keyExpiry,
 );
 
-TailscaleStatus status(BackendState state, {List<Node> peers = const []}) =>
-    TailscaleStatus(
-      backendState: state,
-      self: node('laptop'),
-      peers: peers,
-      tailnetName: 'example.com',
-    );
+TailscaleStatus status(
+  BackendState state, {
+  List<Node> peers = const [],
+  DateTime? keyExpiry,
+}) => TailscaleStatus(
+  backendState: state,
+  self: node('laptop', keyExpiry: keyExpiry),
+  peers: peers,
+  tailnetName: 'example.com',
+);
 
 const profiles = [
   LoginProfile(
@@ -87,6 +93,7 @@ List<TrayEntry> submenu(List<TrayEntry> entries, String label) => entries
 void main() {
   test('running: full menu, like the macOS app', () {
     final menu = buildTrayMenu(
+      now: now,
       status: status(
         BackendState.running,
         peers: [
@@ -101,6 +108,7 @@ void main() {
 
     expect(describe(menu), [
       '[x] Connected',
+      '---',
       'Me (example.com) >',
       '  [x] Me (example.com) (disabled)',
       '  [ ] me@home.net (home.net)',
@@ -119,6 +127,7 @@ void main() {
       '---',
       'Settings…',
       'Open Tailscale',
+      '---',
       'Quit',
     ]);
     expect(commandOf<SetConnected>(menu, 'Connected').connected, isFalse);
@@ -134,6 +143,7 @@ void main() {
 
   test('the exit node in use is checked', () {
     final menu = buildTrayMenu(
+      now: now,
       status: status(
         BackendState.running,
         peers: [node('server', exitOption: true, isExit: true)],
@@ -144,53 +154,90 @@ void main() {
   });
 
   test('stopped: a Connected checkbox that connects, no devices', () {
-    final menu = buildTrayMenu(status: status(BackendState.stopped));
+    final menu = buildTrayMenu(now: now, status: status(BackendState.stopped));
 
     expect(describe(menu), [
       '[ ] Connected',
       '---',
       'Settings…',
       'Open Tailscale',
+      '---',
       'Quit',
     ]);
     expect(commandOf<SetConnected>(menu, 'Connected').connected, isTrue);
   });
 
   test('logged out: a disabled label', () {
-    final menu = buildTrayMenu(status: status(BackendState.needsLogin));
+    final menu = buildTrayMenu(
+      now: now,
+      status: status(BackendState.needsLogin),
+    );
 
     expect(describe(menu).first, 'Logged out (disabled)');
   });
 
-  test('session ended, account still here: Renew under the state', () {
+  test('key expired, account still here: when, and Renew Session', () {
     final menu = buildTrayMenu(
-      status: status(BackendState.needsLogin),
+      now: now,
+      status: status(
+        BackendState.needsLogin,
+        keyExpiry: now.subtract(const Duration(days: 1, hours: 5)),
+      ),
       profiles: profiles,
       currentProfileId: 'a',
     );
 
     expect(describe(menu), [
-      'Logged out (disabled)',
-      'Renew…',
+      'Needs Authentication (disabled)',
+      'Expired 1 day ago (disabled)',
+      'Renew Session…',
+      '---',
       'Me (example.com) >',
       '  [x] Me (example.com) (disabled)',
       '  [ ] me@home.net (home.net)',
       '---',
       'Settings…',
       'Open Tailscale',
+      '---',
       'Quit',
     ]);
-    expect(commandOf<TrayCommand>(menu, 'Renew…'), isA<Renew>());
+    expect(commandOf<TrayCommand>(menu, 'Renew Session…'), isA<Renew>());
+  });
+
+  test('session ended before the key expired: no expiry line', () {
+    final menu = buildTrayMenu(
+      now: now,
+      status: status(
+        BackendState.needsLogin,
+        keyExpiry: now.add(const Duration(days: 30)),
+      ),
+      profiles: profiles,
+      currentProfileId: 'a',
+    );
+
+    expect(describe(menu).take(3), [
+      'Needs Authentication (disabled)',
+      'Renew Session…',
+      '---',
+    ]);
   });
 
   test('after a logout there is no Renew: the new profile is not listed', () {
     final menu = buildTrayMenu(
-      status: status(BackendState.needsLogin),
+      now: now,
+      status: status(
+        BackendState.needsLogin,
+        keyExpiry: now.subtract(const Duration(days: 1)),
+      ),
       profiles: profiles,
       currentProfileId: '',
     );
 
-    expect(describe(menu), isNot(contains('Renew…')));
+    expect(describe(menu).take(3), [
+      'Logged out (disabled)',
+      '---',
+      'Accounts >',
+    ]);
   });
 
   test('logged out: nothing of the previous account shows', () {
@@ -205,17 +252,19 @@ void main() {
       'User': null,
     });
 
-    expect(describe(buildTrayMenu(status: status)), [
+    expect(describe(buildTrayMenu(now: now, status: status)), [
       'Logged out (disabled)',
       '---',
       'Settings…',
       'Open Tailscale',
+      '---',
       'Quit',
     ]);
   });
 
   test('files being received show their progress', () {
     final menu = buildTrayMenu(
+      now: now,
       status: status(BackendState.stopped),
       incomingFiles: const [
         IncomingFile(name: 'photo.jpg', declaredSize: 200, received: 90),
@@ -231,16 +280,18 @@ void main() {
       '---',
       'Settings…',
       'Open Tailscale',
+      '---',
       'Quit',
     ]);
   });
 
   test('daemon unreachable', () {
-    expect(describe(buildTrayMenu(status: null)), [
+    expect(describe(buildTrayMenu(now: now, status: null)), [
       'Tailscale is not running (disabled)',
       '---',
       'Settings…',
       'Open Tailscale',
+      '---',
       'Quit',
     ]);
   });

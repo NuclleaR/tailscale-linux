@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -13,6 +14,7 @@ import 'settings/settings_window.dart';
 import 'settings/widgets.dart';
 import 'tailscale/local_api.dart';
 import 'tailscale/operator.dart';
+import 'tailscale/status.dart';
 import 'tailscale/taildrop_receiver.dart';
 import 'tailscale/tailscale_controller.dart';
 import 'tray/tray_menu.dart';
@@ -186,7 +188,22 @@ Future<void> main() async {
     }),
   );
 
+  // The tray's "Expired 3 hours ago" goes stale while nothing else changes
+  // the menu, so a timer below rebuilds it when this wording changes.
+  String? trayExpiry(DateTime now) {
+    final status = tailscale.status;
+    final expiry = status?.self?.keyExpiry;
+    if (status?.backendState != BackendState.needsLogin || expiry == null) {
+      return null;
+    }
+    return expiredLabel(expiry, now);
+  }
+
+  String? shownExpiry;
+
   void updateTray() {
+    final now = DateTime.now();
+    shownExpiry = trayExpiry(now);
     final status = tailscale.status;
     final connected = status?.isRunning ?? false;
     tray.update(
@@ -198,6 +215,7 @@ Future<void> main() async {
       },
       entries: buildTrayMenu(
         status: status,
+        now: now,
         profiles: tailscale.profiles,
         currentProfileId: tailscale.currentProfileId,
         incomingFiles: tailscale.incomingFiles,
@@ -210,6 +228,9 @@ Future<void> main() async {
     updateTray();
     tailscale.addListener(updateTray);
     appSettings.addListener(updateTray);
+    Timer.periodic(const Duration(minutes: 1), (_) {
+      if (trayExpiry(DateTime.now()) != shownExpiry) updateTray();
+    });
   } else {
     debugPrint('tray: not supported here; showing the window instead');
   }

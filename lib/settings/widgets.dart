@@ -133,11 +133,23 @@ class CopyLinkButton extends StatelessWidget {
 String expiryLabel(DateTime expiry, DateTime now) {
   final left = expiry.difference(now);
   if (left <= Duration.zero) return 'Expired';
-  String expiresIn(int n, String unit) =>
-      'Expires in $n $unit${n == 1 ? '' : 's'}';
-  if (left.inDays >= 1) return expiresIn(left.inDays, 'day');
-  if (left.inHours >= 1) return expiresIn(left.inHours, 'hour');
-  return expiresIn(left.inMinutes < 1 ? 1 : left.inMinutes, 'minute');
+  return 'Expires in ${_span(left)}';
+}
+
+/// How long ago a key that expired at [expiry] did, as the macOS app's tray
+/// puts it: "Expired 1 day ago". Null while the key has not expired.
+String? expiredLabel(DateTime expiry, DateTime now) {
+  final ago = now.difference(expiry);
+  if (ago < Duration.zero) return null;
+  return 'Expired ${_span(ago)} ago';
+}
+
+/// [duration] in its largest whole unit: "90 days", "18 hours", "1 minute".
+String _span(Duration duration) {
+  String count(int n, String unit) => '$n $unit${n == 1 ? '' : 's'}';
+  if (duration.inDays >= 1) return count(duration.inDays, 'day');
+  if (duration.inHours >= 1) return count(duration.inHours, 'hour');
+  return count(duration.inMinutes < 1 ? 1 : duration.inMinutes, 'minute');
 }
 
 String userName(UserProfile user) =>
