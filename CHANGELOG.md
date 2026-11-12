@@ -4,7 +4,7 @@ All notable changes to Tailscale for Linux. Versions follow
 [Semantic Versioning](https://semver.org); a version with a suffix such as `-beta` is a
 pre-release. Each section below becomes the notes of its GitHub release.
 
-## [Unreleased]
+## [0.3.1] - 2026-11-12
 
 ### Changed
 
